@@ -1,0 +1,39 @@
+@startuml
+skinparam linetype ortho
+
+package "FOOBAR" {
+  package "Aggregation" {
+    component sensor as "LORA Sensor"
+    component ttn
+    component mqtt as "Mosquitto (MQTT)"
+    component aggregator
+  }
+
+  package "Core Infra" {
+    component backend
+    component storage as "Postgres TimescaleDB"
+    component adminui
+    component Grafana
+  }
+
+  package "Presentation" {
+    component exporters
+    component visuals
+  }
+}
+
+
+Aggregation --[hidden]-> "Core Infra"
+"Core Infra" --[hidden]-> Presentation
+
+sensor --> ttn : LORA
+ttn -> mqtt : MQTT
+mqtt -> aggregator
+aggregator --> backend
+backend -> storage
+storage --> exporters : ReadOnly
+exporters --> backend : For Write Actions
+exporters -> visuals
+storage --> Grafana : ReadOnly
+
+@enduml
