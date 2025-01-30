@@ -1,0 +1,13 @@
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg17
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_PASSWORD=password
+  mosquitto:
+    image: eclipse-mosquitto
+    ports:
+      - 1883:1883
+    volumes:
+      - "./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf"
