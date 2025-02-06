@@ -44,8 +44,12 @@ func main() {
 	}
 
 	for {
+		uuid, err := uuid.Parse("e529df2e-03ef-4ae1-9b6f-f4b894f9b0db")
+		if err != nil {
+			panic(err)
+		}
 		message := structs.DensityData{
-			SensorID: uuid.New(),
+			SensorID: uuid,
 			Value:    float64(rand.Intn(100)),
 		}
 
