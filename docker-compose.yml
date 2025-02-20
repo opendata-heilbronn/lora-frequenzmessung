@@ -11,3 +11,11 @@ services:
       - 1883:1883
     volumes:
       - "./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf"
+
+  mossquito-dashboard:
+    image: terdia07/mqttui
+    environment:
+      MQTT_PORT: 1883
+      MQTT_BROKER: mosquitto
+    ports:
+      - "5001:5000"
