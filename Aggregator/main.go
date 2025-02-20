@@ -1,10 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Misc"
 	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Mqtt"
+	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Yaml"
+	"github.com/opendata-heilbronn/lora-frequenzmessung/structs"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -15,7 +19,27 @@ var clientID string
 var topic string
 
 var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
-	fmt.Printf("Received message: %s from topic: %s\n", msg.Payload(), msg.Topic())
+	var messageDens structs.DensityData
+
+	err := json.Unmarshal(msg.Payload(), &messageDens)
+	if err != nil {
+		log.Fatalf("Unable to marshal JSON due to %s", err)
+	}
+	clients := Yaml.LoadYaml()
+	//for client in clients:
+	clientOfMessage := structs.Clients{}
+	found := false
+	for _, client := range clients {
+		if client.UUID == messageDens.SensorID.String() {
+			clientOfMessage = client
+			found = true
+		}
+	}
+	if !found {
+		return
+	}
+
+	fmt.Printf("Sensore ID: %s, Value: %f, Name: %s\n", messageDens.SensorID, messageDens.Value, clientOfMessage.Name)
 }
 
 func main() {
