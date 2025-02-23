@@ -36,3 +36,4 @@ fabric.properties
 !.vscode/*.code-snippets
 .history/
 *.vsix
+/docker/timescaledb/*
