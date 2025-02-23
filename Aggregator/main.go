@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/go-resty/resty/v2"
 	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Misc"
 	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Mqtt"
 	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Yaml"
@@ -19,7 +20,9 @@ var clientID string
 var topic string
 
 var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
+	//todo add checker identify data type
 	var messageDens structs.DensityData
+	resty := resty.New()
 
 	err := json.Unmarshal(msg.Payload(), &messageDens)
 	if err != nil {
@@ -38,8 +41,14 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 	if !found {
 		return
 	}
+	var DataWithClient structs.DensityDataWithClient
 
-	fmt.Printf("Sensore ID: %s, Value: %f, Name: %s\n", messageDens.SensorID, messageDens.Value, clientOfMessage.Name)
+	DataWithClient.Client = clientOfMessage
+	DataWithClient.Data = messageDens
+	DataWithClient.DataType = "densityData"
+	encodedData, _ := json.Marshal(DataWithClient)
+	fmt.Println(string(encodedData))
+	resty.R().SetBody(encodedData).Post("http://localhost:3001/add-sensor-data")
 }
 
 func main() {

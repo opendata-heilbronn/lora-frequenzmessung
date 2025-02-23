@@ -45,7 +45,7 @@ func main() {
 			fmt.Println(err)
 			os.Exit(1)
 		}
-		token := client.Publish(topic, 0, false, messageString)
+		token := client.Publish(topic, 0, true, messageString)
 		token.Wait()
 		fmt.Printf("Published message: %s\n", messageString)
 		time.Sleep(time.Second)

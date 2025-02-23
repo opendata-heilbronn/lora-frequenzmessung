@@ -4,14 +4,27 @@ services:
     ports:
       - 5432:5432
     environment:
-      - POSTGRES_PASSWORD=password
+        POSTGRES_USER: timescaledb
+        POSTGRES_PASSWORD: password
+    volumes:
+      - db-storage:/var/lib/postgresql/data
   mosquitto:
     image: eclipse-mosquitto
     ports:
       - 1883:1883
     volumes:
       - "./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf"
-
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
   mossquito-dashboard:
     image: terdia07/mqttui
     environment:
@@ -19,3 +32,6 @@ services:
       MQTT_BROKER: mosquitto
     ports:
       - "5001:5000"
+volumes:
+  grafana-storage: {}
+  db-storage: {}
