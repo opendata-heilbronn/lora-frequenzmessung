@@ -38,6 +38,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			found = true
 		}
 	}
+
 	if !found {
 		return
 	}
@@ -52,7 +53,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 }
 
 func main() {
-	//clientsData := Yaml.LoadYaml()
+	Misc.StartUp()
 	broker, clientID, topic := Misc.SetupVars()
 	opts := mqtt.NewClientOptions()
 	opts.SetDefaultPublishHandler(messagePubHandler)

@@ -27,6 +27,7 @@ var connectLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, err
 }
 
 func main() {
+	Misc.StartUp()
 	broker, clientID, topic := Misc.SetupVars()
 	opts := mqtt.NewClientOptions()
 	client := Mqtt.StartMqtttConnection(broker, clientID, opts)
