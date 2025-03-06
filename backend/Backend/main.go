@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
-	"github.com/opendata-heilbronn/lora-frequenzmessung/structs"
+	"github.com/opendata-heilbronn/lora-frequenzmessung/backend-/structs"
 	"os"
 	"time"
 
