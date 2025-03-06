@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
-	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Misc"
+	Misc2 "github.com/opendata-heilbronn/lora-frequenzmessung/Share/Misc"
 	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Mqtt"
 	"github.com/opendata-heilbronn/lora-frequenzmessung/structs"
 	"math/rand"
@@ -27,8 +27,8 @@ var connectLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, err
 }
 
 func main() {
-	Misc.StartUp()
-	broker, clientID, topic := Misc.SetupVars()
+	Misc2.StartUp()
+	broker, clientID, topic := Misc2.SetupVars()
 	opts := mqtt.NewClientOptions()
 	client := Mqtt.StartMqtttConnection(broker, clientID, opts)
 

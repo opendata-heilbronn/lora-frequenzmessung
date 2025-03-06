@@ -5,10 +5,10 @@ import (
 	"fmt"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/go-resty/resty/v2"
-	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Misc"
+	Misc2 "github.com/opendata-heilbronn/lora-frequenzmessung/Share/Misc"
 	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Mqtt"
 	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Yaml"
-	"github.com/opendata-heilbronn/lora-frequenzmessung/structs"
+	structs2 "github.com/opendata-heilbronn/lora-frequenzmessung/structs"
 	"log"
 	"os"
 	"os/signal"
@@ -21,7 +21,7 @@ var topic string
 
 var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 	//todo add checker identify data type
-	var messageDens structs.DensityData
+	var messageDens structs2.DensityData
 	resty := resty.New()
 
 	err := json.Unmarshal(msg.Payload(), &messageDens)
@@ -30,7 +30,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 	}
 	clients := Yaml.LoadYaml()
 	//for client in clients:
-	clientOfMessage := structs.Clients{}
+	clientOfMessage := structs2.Clients{}
 	found := false
 	for _, client := range clients {
 		if client.UUID == messageDens.SensorID.String() {
@@ -42,7 +42,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 	if !found {
 		return
 	}
-	var DataWithClient structs.DensityDataWithClient
+	var DataWithClient structs2.DensityDataWithClient
 
 	DataWithClient.Client = clientOfMessage
 	DataWithClient.Data = messageDens
@@ -53,8 +53,8 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 }
 
 func main() {
-	Misc.StartUp()
-	broker, clientID, topic := Misc.SetupVars()
+	Misc2.StartUp()
+	broker, clientID, topic := Misc2.SetupVars()
 	opts := mqtt.NewClientOptions()
 	opts.SetDefaultPublishHandler(messagePubHandler)
 	mqttClient := Mqtt.StartMqtttConnection(broker, clientID, opts)
