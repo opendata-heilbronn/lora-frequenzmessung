@@ -1,0 +1,27 @@
+name: built Deploy go-aggregator to ghcr.io
+on:
+  push:
+    branches:
+      - main
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4.1.7
+    - name: 'Login to GitHub Container Registry'
+      uses: docker/login-action@v1
+      with:
+        registry: ghcr.io
+        username: ${{github.actor}}
+        password: ${{secrets.GITHUB_TOKEN}}
+    - name: Build and push Docker images
+      uses: docker/build-push-action@v6.7.0
+      with:
+        file: docker/go/Aggregator/Dockerfile
+        push: true
+        tags: ghcr.io/opendata-heilbronn/aggregator:latest, ghcr.io/opendata-heilbronn/aggregator:${{ github.run_number }}
+              
