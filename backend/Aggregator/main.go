@@ -71,6 +71,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 
 func main() {
 	Misc2.StartUp()
+	println("STARTING AGGREGATOR")
 	broker, clientID, topic, username, password, _ := Misc2.SetupVars()
 	opts := mqtt.NewClientOptions()
 	opts.SetDefaultPublishHandler(messagePubHandler)

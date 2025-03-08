@@ -15,6 +15,7 @@ import (
 
 func main() {
 	Misc.StartUp()
+	println("STARTING Backend")
 
 	app := fiber.New()
 	ctx := context.Background()
