@@ -7,8 +7,9 @@ RUN CGO_ENABLED=0 CGO_ENABLED=0 GOOS=linux go build -o /main Backend/main.go
 
 
 FROM scratch
-COPY --from=app-builder /main  /main
-COPY --from=alpine:latest /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+LABEL org.opencontainers.image.source=https://github.com/opendata-heilbronn/lora-frequenzmessung/
+LABEL org.opencontainers.image.description="This is a simple backend for the LoRa frequency measurement project."
+LABEL org.opencontainers.image.licenses=MIT
 
 ENV BROKEN_HOST=eu1.cloud.thethings.network
 ENV BROKEN_PORT=1883
@@ -18,6 +19,6 @@ ENV MQTT_USERNAME="v3/opendata-code-4-heilbronnen-test"
 ENV MQTT_PASSWORD=""
 ENV DB_DSN=""
 EXPOSE 3001
-
+COPY --from=app-builder /main  /main
 COPY --from=alpine:latest /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 CMD ["/main"]
