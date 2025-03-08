@@ -9,7 +9,7 @@ import (
 
 func LoadYaml() []structs.Clients {
 	viper.SetConfigType("yaml")
-	dat, err := os.ReadFile("Aggregator/clients.yml")
+	dat, err := os.ReadFile("backend/Aggregator/clients.yml")
 	if err != nil {
 		panic(err)
 	}

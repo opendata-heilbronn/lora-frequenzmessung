@@ -1,6 +1,8 @@
 FROM golang:alpine as app-builder
 WORKDIR /go/src/app
 COPY backend .
+RUN mkdir -p backend/Aggregator
+COPY backend/Aggregator/clients.yml backend/Aggregator/clients.yml
 
 RUN go mod download
 RUN CGO_ENABLED=0 CGO_ENABLED=0 GOOS=linux go build -o /main Aggregator/main.go
@@ -21,5 +23,6 @@ ENV DB_DSN=""
 EXPOSE 3001
 
 COPY --from=app-builder /main  /main
+COPY --from=app-builder /backend  /main
 COPY --from=alpine:latest /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 CMD ["/main"]
