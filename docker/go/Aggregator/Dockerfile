@@ -23,6 +23,6 @@ ENV DB_DSN=""
 EXPOSE 3001
 
 COPY --from=app-builder /main  /main
-COPY --from=app-builder /backend  /main
+COPY --from=app-builder /go/src/app/backend  /backend
 COPY --from=alpine:latest /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 CMD ["/main"]
