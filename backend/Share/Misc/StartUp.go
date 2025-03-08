@@ -7,6 +7,7 @@ import (
 )
 
 func StartUp() {
+	printCFH()
 	loadEnv()
 }
 func loadEnv() {

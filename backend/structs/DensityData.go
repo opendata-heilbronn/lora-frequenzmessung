@@ -1,11 +1,7 @@
 package structs
 
-import (
-	"github.com/google/uuid"
-)
-
 type DensityData struct {
-	SensorID uuid.UUID
+	SensorID string
 	Value    float64
 }
 type DensityDataWithClient struct {

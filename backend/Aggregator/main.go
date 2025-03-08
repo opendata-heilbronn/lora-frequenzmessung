@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -12,28 +13,44 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 )
 
 var broker string
+var brokerUsername string
+var brokerPassword string
 var clientID string
 var topic string
 
 var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 	//todo add checker identify data type
-	var messageDens structs2.DensityData
+	// tod hint name use the name of the sensores
+	var ttnMessage structs2.TtnMessage
 	resty := resty.New()
+	clients := Yaml.LoadYaml()
 
-	err := json.Unmarshal(msg.Payload(), &messageDens)
+	err := json.Unmarshal(msg.Payload(), &ttnMessage)
 	if err != nil {
 		log.Fatalf("Unable to marshal JSON due to %s", err)
 	}
-	clients := Yaml.LoadYaml()
-	//for client in clients:
+	data, err := base64.StdEncoding.DecodeString(ttnMessage.UplinkMessage.FrmPayload)
+	if err != nil {
+		log.Fatal("while decoding bas64 from TTN Message:", err)
+	}
+	data = data[:len(data)-1] //remove last byte as it is null
+	stringSlice := strings.Split(string(data), ",")
+	sensoreID := stringSlice[0]
+	value, _ := strconv.ParseFloat(stringSlice[1], 64)
 	clientOfMessage := structs2.Clients{}
+	densityData := structs2.DensityData{
+		SensorID: sensoreID,
+		Value:    value,
+	}
 	found := false
 	for _, client := range clients {
-		if client.UUID == messageDens.SensorID.String() {
+		if client.UUID == densityData.SensorID {
 			clientOfMessage = client
 			found = true
 		}
@@ -45,7 +62,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 	var DataWithClient structs2.DensityDataWithClient
 
 	DataWithClient.Client = clientOfMessage
-	DataWithClient.Data = messageDens
+	DataWithClient.Data = densityData
 	DataWithClient.DataType = "densityData"
 	encodedData, _ := json.Marshal(DataWithClient)
 	fmt.Println(string(encodedData))
@@ -54,9 +71,11 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 
 func main() {
 	Misc2.StartUp()
-	broker, clientID, topic := Misc2.SetupVars()
+	broker, clientID, topic, username, password, _ := Misc2.SetupVars()
 	opts := mqtt.NewClientOptions()
 	opts.SetDefaultPublishHandler(messagePubHandler)
+	opts.SetUsername(username)
+	opts.SetPassword(password)
 	mqttClient := Mqtt.StartMqtttConnection(broker, clientID, opts)
 	sub(mqttClient, topic)
 
