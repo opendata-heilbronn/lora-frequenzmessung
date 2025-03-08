@@ -1,5 +1,6 @@
 clients:
   - longitude: 9.2149624
     latitude: 49.1438602
-    uuid: "e529df2e-03ef-4ae1-9b6f-f4b894f9b0db"
+    uuid: "f4b894f9b0db"
     name: "demostraße-11-2"
+    type: "density"

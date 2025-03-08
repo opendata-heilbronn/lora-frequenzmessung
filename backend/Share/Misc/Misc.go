@@ -6,13 +6,16 @@ import (
 )
 
 type config struct {
-	BrokenHost string `env:"BROKEN_HOST"`
-	BrokenPort string `env:"BROKEN_PORT"`
-	ClientID   string `env:"CLIENTID"`
-	Topic      string `env:"TOPIC"`
+	BrokenHost    string `env:"BROKEN_HOST"`
+	BrokenPort    string `env:"BROKEN_PORT"`
+	ClientID      string `env:"CLIENTID"`
+	Topic         string `env:"TOPIC"`
+	MQTT_username string `env:"MQTT_USERNAME"`
+	MQTT_password string `env:"MQTT_PASSWORD"`
+	DBdsn         string `env:"DB_DSN"`
 }
 
-func SetupVars() (string, string, string) {
+func SetupVars() (string, string, string, string, string, string) {
 	var cfg config
 	err := env.Parse(&cfg)
 	if err != nil {
@@ -25,5 +28,8 @@ func SetupVars() (string, string, string) {
 	broker := fmt.Sprintf("tcp://%s:%s", cfg.BrokenHost, cfg.BrokenPort)
 	clientID := cfg.ClientID
 	topic := cfg.Topic
-	return broker, clientID, topic
+	username := cfg.MQTT_username
+	password := cfg.MQTT_password
+	dbDsn := cfg.DBdsn
+	return broker, clientID, topic, username, password, dbDsn
 }

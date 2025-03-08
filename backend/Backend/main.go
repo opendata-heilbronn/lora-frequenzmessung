@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gofiber/fiber/v3"
-	"github.com/google/uuid"
-	"github.com/opendata-heilbronn/lora-frequenzmessung/backend-/structs"
+	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Misc"
+	structs2 "github.com/opendata-heilbronn/lora-frequenzmessung/structs"
 	"os"
 	"time"
 
@@ -14,10 +14,12 @@ import (
 )
 
 func main() {
+	Misc.StartUp()
+
 	app := fiber.New()
 	ctx := context.Background()
-	connStr := "postgres://timescaledb:password@localhost:5432/postgres"
-	conn, err := pgx.Connect(ctx, connStr)
+	_, _, _, _, _, DNDns := Misc.SetupVars()
+	conn, err := pgx.Connect(ctx, DNDns)
 	defer conn.Close(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
@@ -26,7 +28,7 @@ func main() {
 
 	// Define a route for the GET method on the root path '/'
 	app.Post("/add-sensor-data", func(c fiber.Ctx) error {
-		p := new(structs.DensityDataWithClient)
+		p := new(structs2.DensityDataWithClient)
 		err := c.AutoFormat(p)
 		if err != nil {
 			return err
@@ -61,7 +63,7 @@ func main() {
 	}
 
 }
-func sendData(conn *pgx.Conn, ctx context.Context, uuid uuid.UUID, sensorName string, longitude float64, latitude float64, value float64, sensorType string) {
+func sendData(conn *pgx.Conn, ctx context.Context, uuid string, sensorName string, longitude float64, latitude float64, value float64, sensorType string) {
 	t := time.Now()
 	queryInsertMetadata := `INSERT INTO sensor_data (
                          sensor_id,
