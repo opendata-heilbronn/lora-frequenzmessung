@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
 	Misc2 "github.com/opendata-heilbronn/lora-frequenzmessung/Share/Misc"
 	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Mqtt"
 	"github.com/opendata-heilbronn/lora-frequenzmessung/structs"
@@ -28,15 +27,12 @@ var connectLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, err
 
 func main() {
 	Misc2.StartUp()
-	broker, clientID, topic := Misc2.SetupVars()
+	broker, clientID, topic, _, _, _ := Misc2.SetupVars()
 	opts := mqtt.NewClientOptions()
 	client := Mqtt.StartMqtttConnection(broker, clientID, opts)
 
 	for {
-		uuid, err := uuid.Parse("e529df2e-03ef-4ae1-9b6f-f4b894f9b0db")
-		if err != nil {
-			panic(err)
-		}
+		uuid := "f4b894f9b0db"
 		message := structs.DensityData{
 			SensorID: uuid,
 			Value:    float64(rand.Intn(100)),

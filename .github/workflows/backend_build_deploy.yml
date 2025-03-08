@@ -26,4 +26,3 @@ jobs:
         file: docker/go/Aggregator/Dockerfile
         push: true
         tags: ghcr.io/opendata-heilbronn/backend:latest, ghcr.io/opendata-heilbronn/backend:${{ github.run_number }}
-              
