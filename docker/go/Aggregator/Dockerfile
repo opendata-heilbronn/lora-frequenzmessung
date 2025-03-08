@@ -1,8 +1,8 @@
 FROM golang:alpine as app-builder
 WORKDIR /go/src/app
 COPY backend .
-RUN mkdir -p backend/Aggregator
 COPY backend/Aggregator/clients.yml backend/Aggregator/clients.yml
+RUN mkdir -p backend/Aggregator
 
 RUN go mod download
 RUN CGO_ENABLED=0 CGO_ENABLED=0 GOOS=linux go build -o /main Aggregator/main.go
