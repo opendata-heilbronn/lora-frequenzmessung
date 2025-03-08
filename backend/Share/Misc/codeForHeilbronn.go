@@ -66,5 +66,7 @@ func printCFH() {
                                             -==========-                                            
                                                ======                                               
 
+Made by Code 4 Heilbronn
+https://codeforheilbronn.de
 `)
 }

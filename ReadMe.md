@@ -10,7 +10,7 @@ A "simple" way to measure crowd density using Bluetooth and LoRa technology.
 # Install 
 ENV vars ? well todo 
 
-# migration 
+# Migration 
 install
 ```
 mac
@@ -23,4 +23,14 @@ migrate create -ext sql -dir db/migrations -seq create_users_table
 Run migration
 ```
 migrate -database "postgres://timescaledb:password@localhost:5432/postgres?sslmode=disable"  -path db/migrations up
+```
+
+# Docker 
+build for backend 
+```
+docker build -f docker/go/backend/Dockerfile .
+```
+build for aggregator 
+```
+docker build -f docker/go/Aggregator/Dockerfile .
 ```
