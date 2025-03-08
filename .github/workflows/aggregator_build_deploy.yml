@@ -3,6 +3,8 @@ on:
   push:
     branches:
       - main
+    paths:
+      - Aggregator/Backend/**
 jobs:
   docker:
     runs-on: ubuntu-latest
