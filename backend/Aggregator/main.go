@@ -27,6 +27,7 @@ var topic string
 var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 	//todo add checker identify data type
 	// tod hint name use the name of the sensores
+	fmt.Println("Received message: ", msg.MessageID())
 	var ttnMessage structs2.TtnMessage
 	resty := resty.New()
 	clients := Yaml.LoadYaml()
@@ -87,8 +88,10 @@ func sub(client mqtt.Client, topic string) {
 	token := client.Subscribe(topic, 1, nil)
 	token.Wait()
 	fmt.Printf("Subscribed to topic: %s", topic)
+	fmt.Println()
 }
 func signals() {
+	fmt.Println("Starting signal handler")
 	sigs := make(chan os.Signal, 1)
 
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
