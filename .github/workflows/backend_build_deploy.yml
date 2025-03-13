@@ -23,6 +23,6 @@ jobs:
     - name: Build and push Docker images
       uses: docker/build-push-action@v6.7.0
       with:
-        file: docker/go/Backend/Dockerfile
+        file: docker/go/backend/Dockerfile
         push: true
         tags: ghcr.io/opendata-heilbronn/backend:latest, ghcr.io/opendata-heilbronn/backend:${{ github.run_number }}
