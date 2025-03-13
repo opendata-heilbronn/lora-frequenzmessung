@@ -13,6 +13,7 @@ func StartMqtttConnection(broker string, clientID string, opts *mqtt.ClientOptio
 
 	client := mqtt.NewClient(opts)
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
+		fmt.Println("Error connecting to MQTT Broker")
 		panic(token.Error())
 	}
 	return client

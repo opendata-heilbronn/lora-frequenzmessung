@@ -5,12 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gofiber/fiber/v3"
+	"github.com/jackc/pgx/v5"
 	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Misc"
 	structs2 "github.com/opendata-heilbronn/lora-frequenzmessung/structs"
 	"os"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 )
 
 func main() {
