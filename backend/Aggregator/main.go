@@ -67,7 +67,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 	DataWithClient.DataType = "densityData"
 	encodedData, _ := json.Marshal(DataWithClient)
 	fmt.Println(string(encodedData))
-	resty.R().SetBody(encodedData).Post("http://localhost:3001/add-sensor-data")
+	resty.R().SetBody(encodedData).Post(fmt.Sprintf("%s/add-sensor-data", Misc2.GetBackendURL()))
 }
 
 func main() {
