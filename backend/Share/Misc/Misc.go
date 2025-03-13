@@ -15,7 +15,8 @@ type config struct {
 	DBdsn         string `env:"DB_DSN"`
 }
 type backendURL struct {
-	backendURL string `env:"BACKEND_URL"`
+	BACKEND_URL   string `env:"BACKEND_URL"`
+	MQTT_PASSWORD string `env:"MQTT_PASSWORD"`
 }
 
 func GetBackendURL() string {
@@ -25,7 +26,10 @@ func GetBackendURL() string {
 		panic(err)
 	}
 	cfg, err = env.ParseAs[backendURL]()
-	return cfg.backendURL
+	if err != nil {
+		panic(err)
+	}
+	return cfg.BACKEND_URL
 }
 
 func SetupVars() (string, string, string, string, string, string) {
