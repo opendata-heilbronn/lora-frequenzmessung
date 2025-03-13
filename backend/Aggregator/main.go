@@ -69,7 +69,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 	fmt.Println(string(encodedData))
 	_, err = resty.R().SetBody(encodedData).Post(fmt.Sprintf("%s/add-sensor-data", Misc2.GetBackendURL()))
 	if err != nil {
-		fmt.Println("cant send data to backend")
+		fmt.Println("cant send data to Backend due to: ")
 		fmt.Println(err)
 	}
 }
