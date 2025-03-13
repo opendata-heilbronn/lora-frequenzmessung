@@ -4,9 +4,10 @@ services:
       context: .
       dockerfile: docker/go/Aggregator/Dockerfile
     environment:
-      - BROKEN_HOST=eu1.cloud.thethings.network
-      - BROKEN_PORT=1883
-      - CLIENTID=go-mqtt-client
-      - TOPIC=v3/opendata-code-4-heilbronnen-test@ttn/devices/lora-dev/up
-      - MQTT_USERNAME=opendata-code-4-heilbronnen-test@ttn
-      - MQTT_PASSWORD=NNSXS.65KZWWFO53FUJ35MD4CJK7P3J64DVTDLHWTANPA.2MF7YDE4BGWJOF4WMFDWT63KW7JN4QVUBAXCLZNRM4VXJ6DCBEKA
+       BROKEN_HOST: ${BROKEN_HOST}
+       BROKEN_PORT: ${BROKEN_PORT}
+       CLIENTID: ${CLIENTID}
+       TOPIC: ${TOPIC}
+       MQTT_USERNAME: ${MQTT_USERNAME}
+       MQTT_PASSWORD: ${MQTT_PASSWORD}
+       DB_DSN: ${DB_DSN}

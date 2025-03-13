@@ -22,6 +22,8 @@ func main() {
 	conn, err := pgx.Connect(ctx, DNDns)
 	defer conn.Close(ctx)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, " database: %v\n", DNDns)
+		fmt.Println("------------------------------------")
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
 		os.Exit(1)
 	}
@@ -38,10 +40,6 @@ func main() {
 			return err
 		}
 
-		//todo do add migration
-		if err != nil {
-			panic(err)
-		}
 		sendData(
 			conn,
 			ctx,
