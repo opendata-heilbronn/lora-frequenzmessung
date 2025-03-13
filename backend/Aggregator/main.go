@@ -67,7 +67,11 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 	DataWithClient.DataType = "densityData"
 	encodedData, _ := json.Marshal(DataWithClient)
 	fmt.Println(string(encodedData))
-	resty.R().SetBody(encodedData).Post(fmt.Sprintf("%s/add-sensor-data", Misc2.GetBackendURL()))
+	_, err = resty.R().SetBody(encodedData).Post(fmt.Sprintf("%s/add-sensor-data", Misc2.GetBackendURL()))
+	if err != nil {
+		fmt.Println("cant send data to backend")
+		fmt.Println(err)
+	}
 }
 
 func main() {
