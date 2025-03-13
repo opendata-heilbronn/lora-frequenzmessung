@@ -5,6 +5,7 @@ on:
       - main
     paths:
       - backend/Backend/**
+      - .github/workflows/backend_build_deploy.yml
 jobs:
   docker:
     runs-on: ubuntu-latest
