@@ -31,6 +31,18 @@ func GetBackendURL() string {
 	}
 	return cfg.BACKEND_URL
 }
+func GetDBDsn() string {
+	var cfg config
+	err := env.Parse(&cfg)
+	if err != nil {
+		panic(err)
+	}
+	cfg, err = env.ParseAs[config]()
+	if err != nil {
+		panic(err)
+	}
+	return cfg.DBdsn
+}
 
 func SetupVars() (string, string, string, string, string, string) {
 	var cfg config

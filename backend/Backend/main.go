@@ -18,11 +18,11 @@ func main() {
 
 	app := fiber.New()
 	ctx := context.Background()
-	_, _, _, _, _, DNDns := Misc.SetupVars()
-	conn, err := pgx.Connect(ctx, DNDns)
+	DBDns := Misc.GetDBDsn()
+	conn, err := pgx.Connect(ctx, DBDns)
 	defer conn.Close(ctx)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, " database: %v\n", DNDns)
+		fmt.Fprintf(os.Stderr, " database: %v\n", DBDns)
 		fmt.Println("------------------------------------")
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
 		os.Exit(1)
