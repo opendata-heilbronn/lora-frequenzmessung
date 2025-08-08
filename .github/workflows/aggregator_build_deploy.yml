@@ -1,6 +1,5 @@
 name: built Deploy go-aggregator to ghcr.io
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
