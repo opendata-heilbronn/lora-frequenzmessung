@@ -3,6 +3,7 @@ package Mqtt
 import (
 	"fmt"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"os"
 )
 
 func StartMqtttConnection(broker string, clientID string, opts *mqtt.ClientOptions) mqtt.Client {
@@ -26,4 +27,5 @@ var connectHandler mqtt.OnConnectHandler = func(client mqtt.Client) {
 
 var connectLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, err error) {
 	fmt.Printf("Connection lost: %v", err)
+	os.Exit(1)
 }
