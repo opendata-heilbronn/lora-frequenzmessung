@@ -37,5 +37,6 @@ fabric.properties
 .history/
 *.vsix
 /docker/timescaledb/*
-/.env
-backend/.env
+**/.env
+**/.DS_Store
+**/main
