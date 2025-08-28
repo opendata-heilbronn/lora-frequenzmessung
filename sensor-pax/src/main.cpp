@@ -8,7 +8,7 @@
 
 #include "lora.h"
 #include "pax.h"
-
+#include "display.h"
 
 void setup()
 {
@@ -19,10 +19,17 @@ void setup()
   Serial.println("Setup ESP32 to sleep for every " + String(TIME_TO_SLEEP) + " Seconds");
 
   InitPAX();
+  displayMcuInit();  // Jetzt verfügbar
   InitLORA();
 }
 
 void loop()
 {
-  LoopLORA(current_count);
+  //we ignore 0 vallue as pax sends that to often
+  if (current_count != 0)
+  {
+    LoopLORA(current_count);
+  } 
+  else{
+  }
 }

@@ -1,4 +1,3 @@
-
 #include "customs.h"
 #include "LoRaWan_APP.h"
 
@@ -19,6 +18,7 @@ bool loraWanAdr = true;
 
 /* Indicates if the node is sending confirmed or unconfirmed messages */
 bool isTxConfirmed = true;
+int guess = 0;
 
 /* Application port */
 uint8_t appPort = 2;
@@ -92,9 +92,11 @@ void LoopLORA(int current_count)
     case DEVICE_STATE_SEND:
     {
         LoRaWAN.displaySending();
-        prepareTxFrame(appPort, current_count);
+        guess = static_cast<int>(current_count* factor);
+        prepareTxFrame(appPort, guess);
         LoRaWAN.send();
         deviceState = DEVICE_STATE_CYCLE;
+        Serial.println("Send guess: " + String(guess));
 
         Serial.println("Going to sleep now");
         delay(1000);
@@ -114,7 +116,7 @@ void LoopLORA(int current_count)
     }
     case DEVICE_STATE_SLEEP:
     {
-        LoRaWAN.displayAck();
+        //LoRaWAN.displayAck();
         LoRaWAN.sleep(loraWanClass);
         break;
     }
