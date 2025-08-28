@@ -2,9 +2,9 @@ name: built Deploy go-aggregator to ghcr.io
 on:
   push:
     branches:
-      - main
+      - 'main'
     paths:
-      - backend/Aggregator/**
+      - 'backend/Aggregator/**'
 jobs:
   docker:
     runs-on: ubuntu-latest
