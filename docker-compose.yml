@@ -29,7 +29,7 @@ services:
     image: terdia07/mqttui
     environment:
       MQTT_PORT: ${BROKEN_PORT}
-      MQTT_BROKER: ${BROKEN_HOST}
+      MQTT_BROKER: ${BROKEN_HOST_DASHBOARD}
       MQTT_USERNAME: ${MQTT_USERNAME}
       MQTT_PASSWORD: ${MQTT_PASSWORD}
     ports:

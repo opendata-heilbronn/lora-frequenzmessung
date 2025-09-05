@@ -25,8 +25,6 @@ var clientID string
 var topic string
 
 var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
-	//todo add checker identify data type
-	// tod hint name use the name of the sensores
 	fmt.Println("Received message: ", msg.MessageID())
 	var ttnMessage structs2.TtnMessage
 	resty := resty.New()
@@ -43,34 +41,70 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 	data = data[:len(data)-1] //remove last byte as it is null
 	stringSlice := strings.Split(string(data), ",")
 	sensoreID := stringSlice[0]
+	Datatype := stringSlice[2]
 	value, _ := strconv.ParseFloat(stringSlice[1], 64)
 	clientOfMessage := structs2.Clients{}
-	densityData := structs2.DensityData{
-		SensorID: sensoreID,
-		Value:    value,
-	}
-	found := false
-	for _, client := range clients {
-		if client.UUID == densityData.SensorID {
-			clientOfMessage = client
-			found = true
+
+	switch Datatype {
+	case "0":
+		densityData := structs2.DensityData{
+			SensorID: sensoreID,
+			Value:    value,
 		}
-	}
+		found := false
+		for _, client := range clients {
+			if client.UUID == densityData.SensorID {
+				clientOfMessage = client
+				found = true
+			}
+		}
 
-	if !found {
-		return
-	}
-	var DataWithClient structs2.DensityDataWithClient
+		if !found {
+			return
+		}
+		var DataWithClient structs2.DensityDataWithClient
 
-	DataWithClient.Client = clientOfMessage
-	DataWithClient.Data = densityData
-	DataWithClient.DataType = "densityData"
-	encodedData, _ := json.Marshal(DataWithClient)
-	fmt.Println(string(encodedData))
-	_, err = resty.R().SetBody(encodedData).Post(fmt.Sprintf("%s/add-sensor-data", Misc2.GetBackendURL()))
-	if err != nil {
-		fmt.Println("cant send data to Backend due to: ")
-		fmt.Println(err)
+		DataWithClient.Client = clientOfMessage
+		DataWithClient.Data = densityData
+		DataWithClient.DataType = "densityData"
+		encodedData, _ := json.Marshal(DataWithClient)
+		fmt.Println(string(encodedData))
+		_, err = resty.R().SetBody(encodedData).Post(fmt.Sprintf("%s/add-sensor-data", Misc2.GetBackendURL()))
+		if err != nil {
+			fmt.Println("cant send data to Backend due to: ")
+			fmt.Println(err)
+		}
+	case "1":
+		// Handle BatteryChargeData
+		batteryChargeData := structs2.BatteryChargeData{
+			SensorID: sensoreID,
+			Value:    value,
+		}
+		found := false
+		for _, client := range clients {
+			if client.UUID == batteryChargeData.SensorID {
+				clientOfMessage = client
+				found = true
+			}
+		}
+
+		if !found {
+			return
+		}
+		var DataWithClient structs2.BatteryChargeDataWithClient
+
+		DataWithClient.Client = clientOfMessage
+		DataWithClient.Data = batteryChargeData
+		DataWithClient.DataType = "batteryChargeData"
+		encodedData, _ := json.Marshal(DataWithClient)
+		fmt.Println(string(encodedData))
+		_, err = resty.R().SetBody(encodedData).Post(fmt.Sprintf("%s/add-sensor-data", Misc2.GetBackendURL()))
+		if err != nil {
+			fmt.Println("cant send data to Backend due to: ")
+			fmt.Println(err)
+		}
+	default:
+		fmt.Printf("Unknown datatype: %s\n", Datatype)
 	}
 }
 
