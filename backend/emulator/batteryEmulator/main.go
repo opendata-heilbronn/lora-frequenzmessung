@@ -120,9 +120,9 @@ func main() {
 
 	for {
 		uuid := "f4b894f9b0db"
-		message := structs.DensityData{
+		message := structs.BatteryChargeData{
 			SensorID: uuid,
-			Value:    float64(rand.Intn(100)),
+			Value:    float64(rand.Intn(10000)) / 100.0, // Generate values like 99.9999
 		}
 		messageString := base64.StdEncoding.EncodeToString([]byte(
 			fmt.Sprintf("%s,%f,%dx", message.SensorID, message.Value, 1)))

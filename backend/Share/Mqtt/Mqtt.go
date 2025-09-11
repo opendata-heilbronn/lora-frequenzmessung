@@ -3,10 +3,12 @@ package Mqtt
 import (
 	"fmt"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"math/rand"
 	"os"
 )
 
 func StartMqtttConnection(broker string, clientID string, opts *mqtt.ClientOptions) mqtt.Client {
+	clientID = fmt.Sprintf("%s-%d", clientID, rand.Int())
 	opts.AddBroker(broker)
 	opts.SetClientID(clientID)
 	opts.OnConnect = connectHandler
