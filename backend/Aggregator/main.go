@@ -43,35 +43,47 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 	data = data[:len(data)-1] //remove last byte as it is null
 	stringSlice := strings.Split(string(data), ",")
 	sensoreID := stringSlice[0]
-	value, _ := strconv.ParseFloat(stringSlice[1], 64)
-	clientOfMessage := structs2.Clients{}
-	densityData := structs2.DensityData{
-		SensorID: sensoreID,
-		Value:    value,
-	}
-	found := false
-	for _, client := range clients {
-		if client.UUID == densityData.SensorID {
-			clientOfMessage = client
-			found = true
+	NumberOfvalues := (len(stringSlice) - 1) / 2
+	var shift = 1
+	for i := 0; i < NumberOfvalues; i++ {
+		typeID, _ := strconv.Atoi((stringSlice[shift]))
+		value, _ := strconv.ParseFloat(stringSlice[shift+1], 64)
+		shift = shift + 2
+		clientOfMessage := structs2.Clients{}
+		densityData := structs2.DensityData{
+			SensorID: sensoreID,
+			Value:    value,
+		}
+		found := false
+		for _, client := range clients {
+			if client.UUID == densityData.SensorID {
+				clientOfMessage = client
+				found = true
+			}
+		}
+		if !found {
+			return
+		}
+		var DataWithClient structs2.DensityDataWithClient
+		switch typeID {
+		case 0:
+			DataWithClient.DataType = "densityData"
+		case 1:
+			DataWithClient.DataType = "batteryData"
+
+		}
+
+		DataWithClient.Client = clientOfMessage
+		DataWithClient.Data = densityData
+		encodedData, _ := json.Marshal(DataWithClient)
+		fmt.Println(string(encodedData))
+		_, err = resty.R().SetBody(encodedData).Post(fmt.Sprintf("%s/add-sensor-data", Misc2.GetBackendURL()))
+		if err != nil {
+			fmt.Println("cant send data to Backend due to: ")
+			fmt.Println(err)
 		}
 	}
 
-	if !found {
-		return
-	}
-	var DataWithClient structs2.DensityDataWithClient
-
-	DataWithClient.Client = clientOfMessage
-	DataWithClient.Data = densityData
-	DataWithClient.DataType = "densityData"
-	encodedData, _ := json.Marshal(DataWithClient)
-	fmt.Println(string(encodedData))
-	_, err = resty.R().SetBody(encodedData).Post(fmt.Sprintf("%s/add-sensor-data", Misc2.GetBackendURL()))
-	if err != nil {
-		fmt.Println("cant send data to Backend due to: ")
-		fmt.Println(err)
-	}
 }
 
 func main() {
