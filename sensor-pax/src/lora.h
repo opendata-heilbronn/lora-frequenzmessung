@@ -1,4 +1,3 @@
-
 #include "customs.h"
 #include "LoRaWan_APP.h"
 
@@ -19,6 +18,7 @@ bool loraWanAdr = true;
 
 /* Indicates if the node is sending confirmed or unconfirmed messages */
 bool isTxConfirmed = true;
+int guess = 0;
 
 /* Application port */
 uint8_t appPort = 2;
@@ -45,15 +45,14 @@ uint8_t appPort = 2;
 uint8_t confirmedNbTrials = 4;
 
 /* Prepares the payload of the frame */
-static void prepareTxFrame(uint8_t port, int current_count)
+static void prepareTxFrame( float value, int SensoreType)
 {
-    // Create a simple JSON-like structure
-    String seperator = ",";
-    String string = sensor_id + seperator + String(current_count);
+    Serial.println("prepareTxFrame");
+    //String payload= "DEMO";
+    String payload = String(sensor_id) + "," + String(value, 4) + "," + String(SensoreType);
 
-    // Convert the string to bytes
-    appDataSize = string.length() + 1;
-    string.getBytes(appData, appDataSize);
+    appDataSize = payload.length() + 1;
+    payload.getBytes(appData, appDataSize);
 }
 
 RTC_DATA_ATTR bool firstrun = true;
@@ -69,7 +68,7 @@ void InitLORA()
     }
 }
 
-void LoopLORA(int current_count)
+void LoopLORA(int current_count,double battery_percentage)
 {
     switch (deviceState)
     {
@@ -91,10 +90,25 @@ void LoopLORA(int current_count)
     }
     case DEVICE_STATE_SEND:
     {
+        Serial.println("startSending");
         LoRaWAN.displaySending();
-        prepareTxFrame(appPort, current_count);
+        if (current_count < 6 )
+        {
+                Serial.println("Under 6 people, we dont send it for security reeasones");
+                Serial.flush(); 
+                esp_deep_sleep_start();
+                break;
+        }
+        
+        guess = static_cast<int>(current_count* factor);
+        prepareTxFrame( float(guess),0);
         LoRaWAN.send();
+        Serial.println("Send guess: " + String(guess));
         deviceState = DEVICE_STATE_CYCLE;
+
+        //prepareTxFrame(float(battery_percentage),1);
+        //LoRaWAN.send();
+        //Serial.println("Send batery value ");
 
         Serial.println("Going to sleep now");
         delay(1000);
@@ -114,7 +128,7 @@ void LoopLORA(int current_count)
     }
     case DEVICE_STATE_SLEEP:
     {
-        LoRaWAN.displayAck();
+        //LoRaWAN.displayAck();
         LoRaWAN.sleep(loraWanClass);
         break;
     }
