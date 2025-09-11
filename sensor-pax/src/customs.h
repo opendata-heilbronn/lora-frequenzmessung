@@ -14,3 +14,7 @@ uint32_t devAddr = (uint32_t)0x260BE3E9;
 uint16_t userChannelsMask[6] = {0x00FF, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000};
 
  float factor= 0.7;
+float sleepTime= 900; //time in sec 900 sec are 15 min
+
+int SensorTypFrequency=0;
+int SensorTypBattery=1;
