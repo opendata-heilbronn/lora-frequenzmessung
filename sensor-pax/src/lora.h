@@ -45,12 +45,11 @@ uint8_t appPort = 2;
 uint8_t confirmedNbTrials = 4;
 
 /* Prepares the payload of the frame */
-static void prepareTxFrame( float value, int SensoreType)
+static void prepareTxFrame( float densityValue, float batteryValue)
 {
     Serial.println("prepareTxFrame");
-    //String payload= "DEMO";
-    String payload = String(sensor_id) + "," + String(value, 4) + "," + String(SensoreType);
-
+    String payload = String(sensor_id) + ","+0+"," + String(densityValue, 4)+ ","+ 1 + "," + String(batteryValue);
+    Serial.println(payload);
     appDataSize = payload.length() + 1;
     payload.getBytes(appData, appDataSize);
 }
@@ -101,15 +100,10 @@ void LoopLORA(int current_count,double battery_percentage)
         }
         
         guess = static_cast<int>(current_count* factor);
-        prepareTxFrame( float(guess),0);
+        prepareTxFrame( float(guess),float(battery_percentage));
         LoRaWAN.send();
         Serial.println("Send guess: " + String(guess));
         deviceState = DEVICE_STATE_CYCLE;
-
-        //prepareTxFrame(float(battery_percentage),1);
-        //LoRaWAN.send();
-        //Serial.println("Send batery value ");
-
         Serial.println("Going to sleep now");
         delay(1000);
         Serial.flush();
