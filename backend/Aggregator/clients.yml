@@ -4,3 +4,8 @@ clients:
     uuid: "f4b894f9b0db"
     name: "DEMO "
     type: "density"
+  - longitude: 9.217473
+    latitude:  49.143440
+    uuid: "863f75b0"
+    name: "density-01"
+    type: "density"
