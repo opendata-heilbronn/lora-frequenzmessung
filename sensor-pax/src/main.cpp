@@ -19,22 +19,19 @@ const double MIN_BATT_VOLTAGE = 3.0; // Voltage for 0%
 #include "display.h"
 
 double getBatteryValue() {
-  // Enable the voltage divider circuit on the V2 board
-  pinMode(VBAT_ADC_CTL, OUTPUT);
-  digitalWrite(VBAT_ADC_CTL, LOW);
-  delay(1); // Give the circuit time to stabilize
+  // Set the resolution of the analog-to-digital converter (ADC) to 12 bits (0-4095):
+  analogReadResolution(12);
 
-  // On V2 boards, the battery is connected to GPIO37
-  int adc_millivolts = analogReadMilliVolts(13);
-  double battery_voltage = (adc_millivolts / 1000.0) * VOLTAGE_DIVIDER_FACTOR;
-  double battery_percentage = ((battery_voltage - MIN_BATT_VOLTAGE) / (MAX_BATT_VOLTAGE - MIN_BATT_VOLTAGE)) * 100.0;
-  battery_percentage = constrain(battery_percentage, 0.0, 100.0);
+  // Set pin 37 as an output pin (used for ADC control):
+  pinMode(37, OUTPUT);
 
-  // You may want to disable the divider after reading to save power
-  digitalWrite(VBAT_ADC_CTL, HIGH);
-  pinMode(VBAT_ADC_CTL, INPUT);
+  // Set pin 37 to HIGH (enable ADC control):
+  digitalWrite(37, HIGH);
+  int analogValue = analogRead(1);
 
-  return battery_voltage;
+  int analogVolts = analogReadMilliVolts(1);
+
+  return analogVolts * 490 / 100;
 }
 void setup()
 {
@@ -45,9 +42,9 @@ void setup()
   Serial.println("Setup ESP32 to sleep for every " + String(sleepTime) + " Seconds");
 
   InitPAX();
-  displayMcuInit();  
+  displayMcuInit();
   InitLORA();
-  
+
   //batery settup
   analogReadResolution(12);
   pinMode(37, OUTPUT);
@@ -59,14 +56,14 @@ void setup()
 }
 
 void loop()
-{ 
+{
   double battery_voltage = getBatteryValue();
   //Serial.printf("Battery Voltage: %.2fV", battery_voltage);
 
   if (current_count != 0)
-  {    
+  {
     LoopLORA(current_count,battery_voltage);
-  } 
+  }
   else{
    // Serial.println("0 ergebniss ");
   }
