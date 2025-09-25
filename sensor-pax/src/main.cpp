@@ -9,6 +9,8 @@ const double VOLTAGE_DIVIDER_FACTOR = 4.9;
 // Define the voltage range for a standard LiPo battery.
 const double MAX_BATT_VOLTAGE = 4.2; // Voltage for 100%
 const double MIN_BATT_VOLTAGE = 3.0; // Voltage for 0%
+#define VBAT_ADC_CTL 21
+
 #include <Arduino.h>
 #include "HT_lCMEN2R13EFC1.h"
 
@@ -16,6 +18,24 @@ const double MIN_BATT_VOLTAGE = 3.0; // Voltage for 0%
 #include "pax.h"
 #include "display.h"
 
+double getBatteryValue() {
+  // Enable the voltage divider circuit on the V2 board
+  pinMode(VBAT_ADC_CTL, OUTPUT);
+  digitalWrite(VBAT_ADC_CTL, LOW);
+  delay(1); // Give the circuit time to stabilize
+
+  // On V2 boards, the battery is connected to GPIO37
+  int adc_millivolts = analogReadMilliVolts(13);
+  double battery_voltage = (adc_millivolts / 1000.0) * VOLTAGE_DIVIDER_FACTOR;
+  double battery_percentage = ((battery_voltage - MIN_BATT_VOLTAGE) / (MAX_BATT_VOLTAGE - MIN_BATT_VOLTAGE)) * 100.0;
+  battery_percentage = constrain(battery_percentage, 0.0, 100.0);
+
+  // You may want to disable the divider after reading to save power
+  digitalWrite(VBAT_ADC_CTL, HIGH);
+  pinMode(VBAT_ADC_CTL, INPUT);
+
+  return battery_voltage;
+}
 void setup()
 {
   Serial.begin(115200);
@@ -33,15 +53,16 @@ void setup()
   pinMode(37, OUTPUT);
   digitalWrite(37, HIGH);
   firstrun = true;
+  double battery_voltage = getBatteryValue();
+  Serial.printf("Battery Voltage: %.2fV", battery_voltage);
+
 }
 
 void loop()
 { 
-  int adc_millivolts = analogReadMilliVolts(1);
-  double battery_voltage = (adc_millivolts / 1000.0) * VOLTAGE_DIVIDER_FACTOR;
-  double battery_percentage = ((battery_voltage - MIN_BATT_VOLTAGE) / (MAX_BATT_VOLTAGE - MIN_BATT_VOLTAGE)) * 100.0;
-  battery_percentage = constrain(battery_percentage, 0.0, 100.0);
-  //Serial.printf("Battery Voltage: %.2fV,  Percentage: %.2f%%\n", battery_voltage, battery_percentage);
+  double battery_voltage = getBatteryValue();
+  //Serial.printf("Battery Voltage: %.2fV", battery_voltage);
+
   if (current_count != 0)
   {    
     LoopLORA(current_count,battery_voltage);
