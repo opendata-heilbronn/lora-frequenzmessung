@@ -29,33 +29,43 @@ const float VOLTAGE_DIVIDER_RATIO = (R1 + R2) / R2;  // 4.9
 
 const float ADC_REFERENCE_VOLTAGE = 3.3;
 const int ADC_RESOLUTION = 4096;  // 12-bit ADC
+const int VBAT_ADC_PIN = 1;  // Heltec V3: battery divider output to ADC on GPIO1
+
 double getBatteryValue() {
-  // Set the resolution of the analog-to-digital converter (ADC) to 12 bits (0-4095):
-  analogReadResolution(12);
+  // Enable the battery voltage divider only during measurement
+  pinMode(VBAT_ADC_CTL, OUTPUT);
+  digitalWrite(VBAT_ADC_CTL, HIGH); // enable divider (per Heltec example)
+  delay(50); // allow RC network to settle (high impedance source)
 
-  // Set pin 37 as an output pin (used for ADC control):
-  pinMode(37, OUTPUT);
+  // Dummy read to charge ADC sampling capacitor
+  (void)analogReadMilliVolts(VBAT_ADC_PIN);
+  delay(5);
 
-  // Set pin 37 to HIGH (enable ADC control):
-  digitalWrite(37, HIGH);
-  int analogValue = analogRead(1);
+  int analogVolts = analogReadMilliVolts(VBAT_ADC_PIN);
 
-  int analogVolts = analogReadMilliVolts(1);
+  // Disable the divider to avoid interference/power drain
+  digitalWrite(VBAT_ADC_CTL, LOW); // disable divider; keep OUTPUT LOW when idle
 
-  return analogVolts * 490 / 100;
+  // Convert measured pin voltage to actual battery voltage using divider factor
+  return analogVolts * 490 / 100; // in millivolts
 }
+
 float readBatteryVoltage() {
-  int total = 0;
-  const int numReadings = 10;
+  // Enable the battery voltage divider only during measurement
+  pinMode(VBAT_ADC_CTL, OUTPUT);
+  digitalWrite(VBAT_ADC_CTL, HIGH); // enable
+  delay(50); // settle time for high impedance divider
 
-  for(int i = 0; i < numReadings; i++) {
-    total += analogRead(1);
-    delay(10);
-  }
-  int averageReading = total / numReadings;
-  float adcVoltage = (averageReading * ADC_REFERENCE_VOLTAGE) / ADC_RESOLUTION;
-  float batteryVoltage = adcVoltage * VOLTAGE_DIVIDER_RATIO;
+  // Dummy read then real read for accurate value
+  (void)analogReadMilliVolts(VBAT_ADC_PIN);
+  delay(5);
+  int analogVolts = analogReadMilliVolts(VBAT_ADC_PIN);
 
+  // Disable the divider immediately after sampling; keep OUTPUT LOW when idle
+  digitalWrite(VBAT_ADC_CTL, LOW);
+
+  // Convert measured pin voltage (mV) to actual battery voltage (V)
+  float batteryVoltage = (analogVolts / 1000.0f) * VOLTAGE_DIVIDER_RATIO;
   return batteryVoltage;
 }
 float calculateBatteryPercentage(float voltage) {
@@ -79,22 +89,28 @@ void setup()
   displayMcuInit();
   InitLORA();
 
-  //batery settup
-  //analogReadResolution(12);
-  //pinMode(37, OUTPUT);
-  //digitalWrite(37, HIGH);
+  // Battery setup (not required if using getBatteryValue/readBatteryVoltage which handle it)
+  analogReadResolution(12);
+  // Ensure VBAT control pin idles LOW (per Heltec docs)
+  pinMode(VBAT_ADC_CTL, OUTPUT);
+  digitalWrite(VBAT_ADC_CTL, LOW);
   firstrun = true;
-  //double battery_voltage = getBatteryValue();
-  //Serial.printf("Battery Voltage: %.2fV", battery_voltage);
+  // Defer battery measurement until just before sending to avoid any impact on join
+  //double battery_voltage_mv = getBatteryValue();
+  //Serial.printf("Battery Voltage: %.2fV", battery_voltage_mv / 1000.0);
 
 }
 
 void loop()
 {
-  //float batteryVoltage = readBatteryVoltage();
-  //float batteryPercentageLinear = calculateBatteryPercentage(batteryVoltage);
-  //Serial.printf("Battery Percentage (Linear): %.1f%%\n", batteryPercentageLinear);
-  float batteryPercentageLinear= 0;
+  float batteryPercentageLinear = 0;
+
+  // Only read battery right before sending to avoid affecting JOIN/INIT
+  if (deviceState == DEVICE_STATE_SEND) {
+    float batteryVoltage = readBatteryVoltage();
+    batteryPercentageLinear = calculateBatteryPercentage(batteryVoltage);
+  }
+
   if (current_count != 0)
   {
     LoopLORA(current_count,batteryPercentageLinear);
