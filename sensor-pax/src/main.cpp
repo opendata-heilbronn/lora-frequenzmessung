@@ -1,80 +1,82 @@
 #define LoRaWAN_DEBUG_LEVEL 0
-
 #define uS_TO_S_FACTOR 1000000ULL
-// --- Battery Voltage Configuration ---
-// The voltage divider on the Heltec V3 board uses a 390k and 100k resistor, 
-// so the measured voltage must be multiplied by 4.9 (390+100)/100.
-const double VOLTAGE_DIVIDER_FACTOR = 4.9; 
-
-// Define the voltage range for a standard LiPo battery.
-const double MAX_BATT_VOLTAGE = 4.2; // Voltage for 100%
-const double MIN_BATT_VOLTAGE = 3.0; // Voltage for 0%
-#define VBAT_ADC_CTL 21
 
 #include <Arduino.h>
 #include "HT_lCMEN2R13EFC1.h"
 
+#include "logging.h"
 #include "lora.h"
 #include "pax.h"
 #include "display.h"
 
-double getBatteryValue() {
-  // Enable the voltage divider circuit on the V2 board
+// --- Battery Configuration ---
+// Heltec V3 hardware: voltage divider (390k + 100k), battery ADC on GPIO1, control on GPIO21
+#define VBAT_ADC_CTL 21
+const int VBAT_ADC_PIN = 1;
+const float VOLTAGE_DIVIDER_RATIO = 4.9;  // (390k + 100k) / 100k
+
+// LiPo battery voltage thresholds
+const float BATTERY_MAX_VOLTAGE = 4.2;  // 100%
+const float BATTERY_MIN_VOLTAGE = 3.3;  // 0%
+
+float readBatteryVoltage() {
   pinMode(VBAT_ADC_CTL, OUTPUT);
+  digitalWrite(VBAT_ADC_CTL, HIGH); // enable
+  delay(10);
+
+  // Dummy read then real read for accurate value
+  (void)analogReadMilliVolts(VBAT_ADC_PIN);
+  delay(2);
+  int analogVolts = analogReadMilliVolts(VBAT_ADC_PIN);
+
   digitalWrite(VBAT_ADC_CTL, LOW);
-  delay(1); // Give the circuit time to stabilize
 
-  // On V2 boards, the battery is connected to GPIO37
-  int adc_millivolts = analogReadMilliVolts(13);
-  double battery_voltage = (adc_millivolts / 1000.0) * VOLTAGE_DIVIDER_FACTOR;
-  double battery_percentage = ((battery_voltage - MIN_BATT_VOLTAGE) / (MAX_BATT_VOLTAGE - MIN_BATT_VOLTAGE)) * 100.0;
-  battery_percentage = constrain(battery_percentage, 0.0, 100.0);
+  float batteryVoltage = (analogVolts / 1000.0f) * VOLTAGE_DIVIDER_RATIO;
+  return batteryVoltage;
+}
 
-  // You may want to disable the divider after reading to save power
-  digitalWrite(VBAT_ADC_CTL, HIGH);
-  pinMode(VBAT_ADC_CTL, INPUT);
+float calculateBatteryPercentage(float voltage) {
+  if (voltage > BATTERY_MAX_VOLTAGE) voltage = BATTERY_MAX_VOLTAGE;
+  if (voltage < BATTERY_MIN_VOLTAGE) voltage = BATTERY_MIN_VOLTAGE;
 
-  return battery_voltage;
+  float percentage = ((voltage - BATTERY_MIN_VOLTAGE) / (BATTERY_MAX_VOLTAGE - BATTERY_MIN_VOLTAGE)) * 100.0;
+
+  return percentage;
 }
 void setup()
 {
   Serial.begin(115200);
-  delay(1000); // Take some time to open up the Serial Monitor
+  delay(100);
 
   esp_sleep_enable_timer_wakeup(sleepTime * uS_TO_S_FACTOR);
-  Serial.println("Setup ESP32 to sleep for every " + String(sleepTime) + " Seconds");
+  logMessage("Setup ESP32 to sleep for every " + String(sleepTime) + " Seconds");
 
   InitPAX();
-  displayMcuInit();  
+#if ENABLE_DISPLAY
+  displayMcuInit();
+#endif
   InitLORA();
-  
-  //batery settup
-  analogReadResolution(12);
-  pinMode(37, OUTPUT);
-  digitalWrite(37, HIGH);
-  firstrun = true;
-  double battery_voltage = getBatteryValue();
-  Serial.printf("Battery Voltage: %.2fV", battery_voltage);
 
+  analogReadResolution(12);
+  pinMode(VBAT_ADC_CTL, OUTPUT);
+  digitalWrite(VBAT_ADC_CTL, LOW);
+  
+  firstrun = true;
 }
 
 void loop()
-{ 
-  double battery_voltage = getBatteryValue();
-  //Serial.printf("Battery Voltage: %.2fV", battery_voltage);
+{
+  float batteryPercentageLinear = 0;
+
+  if (deviceState == DEVICE_STATE_SEND) {
+    float batteryVoltage = readBatteryVoltage();
+    batteryPercentageLinear = calculateBatteryPercentage(batteryVoltage);
+  }
 
   if (current_count != 0)
-  {    
-    LoopLORA(current_count,battery_voltage);
-  } 
-  else{
-   // Serial.println("0 ergebniss ");
-  }
-  if (!firstrun)
   {
-  //  esp_deep_sleep_start();
+    LoopLORA(current_count, batteryPercentageLinear);
   }
-    firstrun = false;
-
-  //sleep(10);
+  
+  firstrun = false;
 }

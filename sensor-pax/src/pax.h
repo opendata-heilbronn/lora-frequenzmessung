@@ -21,7 +21,7 @@ void InitPAX()
   struct libpax_config_t configuration;
   libpax_default_config(&configuration);
   configuration.blecounter = 1;
-  configuration.blescantime = 60;
+  configuration.blescantime = 30;
   configuration.wificounter = 0;
   configuration.wifi_channel_switch_interval = 50;
   configuration.wifi_rssi_threshold = -80;
