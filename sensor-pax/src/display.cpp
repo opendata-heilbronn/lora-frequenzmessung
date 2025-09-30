@@ -26,7 +26,7 @@ void displayMcuInit()
     myDisplay.drawString(myDisplay.getWidth()/2, myDisplay.getHeight()/2-10, "LFM CFHN");
     myDisplay.drawString(myDisplay.getWidth()/2, myDisplay.getHeight()/2+5, "STARTING");
     myDisplay.display();
-    delay(2000);
+    delay(500); // Reduced from 2000ms to 500ms for power efficiency
 }
 
 void displayWriter(String text)

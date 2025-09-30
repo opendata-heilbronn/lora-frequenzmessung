@@ -1,6 +1,7 @@
 #include "customs.h"
 #include "logging.h"
 #include "LoRaWan_APP.h"
+#include "display.h"
 
 /*LoraWan region, select in arduino IDE tools*/
 LoRaMacRegion_t loraWanRegion = ACTIVE_REGION;
@@ -18,7 +19,7 @@ bool overTheAirActivation = true;
 bool loraWanAdr = true;
 
 /* Indicates if the node is sending confirmed or unconfirmed messages */
-bool isTxConfirmed = true;
+bool isTxConfirmed = false; // Changed to false for power efficiency (unconfirmed messages use less airtime)
 int guess = 0;
 
 /* Application port */
@@ -43,7 +44,7 @@ uint8_t appPort = 2;
  * Note, that if NbTrials is set to 1 or 2, the MAC will not decrease
  * the datarate, in case the LoRaMAC layer did not receive an acknowledgment
  */
-uint8_t confirmedNbTrials = 4;
+uint8_t confirmedNbTrials = 2; // Reduced from 4 to 2 for power efficiency
 
 /* Prepares the payload of the frame */
 static void prepareTxFrame( float ValueDensity, float ValueBattery)
@@ -66,7 +67,9 @@ void InitLORA()
 
     if (firstrun)
     {
+#if ENABLE_DISPLAY
         LoRaWAN.displayMcuInit();
+#endif
         firstrun = false;
     }
 }
@@ -81,24 +84,29 @@ void LoopLORA(int current_count,double battery_percentage)
         LoRaWAN.generateDeveuiByChipID();
 #endif
         LoRaWAN.init(loraWanClass, loraWanRegion);
-        // both set join DR and DR when ADR off
         LoRaWAN.setDefaultDR(3);
         break;
     }
     case DEVICE_STATE_JOIN:
     {
+#if ENABLE_DISPLAY
         LoRaWAN.displayJoining();
+#endif
         LoRaWAN.join();
         break;
     }
     case DEVICE_STATE_SEND:
     {
         logMessage("startSending");
+#if ENABLE_DISPLAY
         LoRaWAN.displaySending();
+#endif
         if (current_count < 6 )
         {
                 logMessage("Under 6 people, we dont send it for security reeasones");
-                Serial.flush(); 
+                Serial.flush();
+                Serial.end();
+                VextOFF();
                 esp_deep_sleep_start();
                 break;
         }
@@ -112,8 +120,10 @@ void LoopLORA(int current_count,double battery_percentage)
 
 
         logMessage("Going to sleep now");
-        delay(1000);
+        delay(100);
         Serial.flush();
+        Serial.end();
+        VextOFF();
         esp_deep_sleep_start();
         logMessage("This will never be printed");
 
@@ -129,7 +139,9 @@ void LoopLORA(int current_count,double battery_percentage)
     }
     case DEVICE_STATE_SLEEP:
     {
-        //LoRaWAN.displayAck();
+#if ENABLE_DISPLAY
+        LoRaWAN.displayAck();
+#endif
         LoRaWAN.sleep(loraWanClass);
         break;
     }

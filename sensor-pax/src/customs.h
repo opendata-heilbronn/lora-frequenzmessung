@@ -3,8 +3,13 @@
 
 #include <cstdint>
 
-// Global logging flag: set to 1 to enable logging, 0 to disable (saves battery)
+// Global logging flag: set to 1 to enable logging, 0 to disable
+// NOTE: Disabling logging (set to 0) saves additional power in production by reducing Serial usage
 #define ENABLE_LOGGING 1
+
+// Global display flag: set to 1 to enable display functions, 0 to disable
+// NOTE: Disabling display (set to 0) saves additional power by keeping the display off
+#define ENABLE_DISPLAY 0
 
 char sensor_id[] = "863f75b0";
 

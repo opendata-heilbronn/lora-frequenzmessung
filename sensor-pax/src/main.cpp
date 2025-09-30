@@ -20,20 +20,17 @@ const float BATTERY_MAX_VOLTAGE = 4.2;  // 100%
 const float BATTERY_MIN_VOLTAGE = 3.3;  // 0%
 
 float readBatteryVoltage() {
-  // Enable the battery voltage divider only during measurement
   pinMode(VBAT_ADC_CTL, OUTPUT);
   digitalWrite(VBAT_ADC_CTL, HIGH); // enable
-  delay(50); // settle time for high impedance divider
+  delay(10);
 
   // Dummy read then real read for accurate value
   (void)analogReadMilliVolts(VBAT_ADC_PIN);
-  delay(5);
+  delay(2);
   int analogVolts = analogReadMilliVolts(VBAT_ADC_PIN);
 
-  // Disable the divider immediately after sampling; keep OUTPUT LOW when idle
   digitalWrite(VBAT_ADC_CTL, LOW);
 
-  // Convert measured pin voltage (mV) to actual battery voltage (V)
   float batteryVoltage = (analogVolts / 1000.0f) * VOLTAGE_DIVIDER_RATIO;
   return batteryVoltage;
 }
@@ -49,16 +46,17 @@ float calculateBatteryPercentage(float voltage) {
 void setup()
 {
   Serial.begin(115200);
-  delay(1000); // Take some time to open up the Serial Monitor
+  delay(100);
 
   esp_sleep_enable_timer_wakeup(sleepTime * uS_TO_S_FACTOR);
   logMessage("Setup ESP32 to sleep for every " + String(sleepTime) + " Seconds");
 
   InitPAX();
+#if ENABLE_DISPLAY
   displayMcuInit();
+#endif
   InitLORA();
 
-  // Battery ADC setup: 12-bit resolution, control pin idle LOW
   analogReadResolution(12);
   pinMode(VBAT_ADC_CTL, OUTPUT);
   digitalWrite(VBAT_ADC_CTL, LOW);
@@ -70,7 +68,6 @@ void loop()
 {
   float batteryPercentageLinear = 0;
 
-  // Only read battery right before sending to avoid affecting JOIN/INIT
   if (deviceState == DEVICE_STATE_SEND) {
     float batteryVoltage = readBatteryVoltage();
     batteryPercentageLinear = calculateBatteryPercentage(batteryVoltage);
