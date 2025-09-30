@@ -1,4 +1,5 @@
 #include "customs.h"
+#include "logging.h"
 #include "LoRaWan_APP.h"
 
 /*LoraWan region, select in arduino IDE tools*/
@@ -47,11 +48,11 @@ uint8_t confirmedNbTrials = 4;
 /* Prepares the payload of the frame */
 static void prepareTxFrame( float ValueDensity, float ValueBattery)
 {
-    Serial.println("prepareTxFrame");
+    logMessage("prepareTxFrame");
     String payload = String(sensor_id) + ",0," + String(ValueDensity, 4) + ",1," +String(ValueBattery, 4);
-    Serial.println("payload ----");
-    Serial.println(payload);
-    Serial.println("end ----");
+    logMessage("payload ----");
+    logMessage(payload);
+    logMessage("end ----");
 
     appDataSize = payload.length() + 1;
     payload.getBytes(appData, appDataSize);
@@ -92,11 +93,11 @@ void LoopLORA(int current_count,double battery_percentage)
     }
     case DEVICE_STATE_SEND:
     {
-        Serial.println("startSending");
+        logMessage("startSending");
         LoRaWAN.displaySending();
         if (current_count < 6 )
         {
-                Serial.println("Under 6 people, we dont send it for security reeasones");
+                logMessage("Under 6 people, we dont send it for security reeasones");
                 Serial.flush(); 
                 esp_deep_sleep_start();
                 break;
@@ -105,16 +106,16 @@ void LoopLORA(int current_count,double battery_percentage)
         guess = static_cast<int>(current_count* factor);
         prepareTxFrame( float(guess),float(battery_percentage));
         LoRaWAN.send();
-        Serial.println("Send guess: " + String(guess,4));
-        Serial.println("Send battery: " + String(battery_percentage,4));
+        logMessage("Send guess: " + String(guess,4));
+        logMessage("Send battery: " + String(battery_percentage,4));
         deviceState = DEVICE_STATE_CYCLE;
 
 
-        Serial.println("Going to sleep now");
+        logMessage("Going to sleep now");
         delay(1000);
         Serial.flush();
         esp_deep_sleep_start();
-        Serial.println("This will never be printed");
+        logMessage("This will never be printed");
 
         break;
     }
