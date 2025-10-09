@@ -8,9 +8,9 @@ LoRaMacRegion_t loraWanRegion = ACTIVE_REGION;
 
 /*LoraWan Class, Class A and Class C are supported*/
 DeviceClass_t loraWanClass = CLASS_A;
-
+const uint32_t SECONDS_TO_MILLISECONDS = 1000;
 /*the application data transmission duty cycle.  value in [ms].*/
-uint32_t appTxDutyCycle = 15000;
+uint32_t appTxDutyCycle = sleepTime *SECONDS_TO_MILLISECONDS ;
 
 /*OTAA or ABP*/
 bool overTheAirActivation = true;
@@ -97,6 +97,7 @@ void LoopLORA(int current_count,double battery_percentage)
     }
     case DEVICE_STATE_SEND:
     {
+        deviceState = DEVICE_STATE_CYCLE;
         logMessage("startSending");
 #if ENABLE_DISPLAY
         LoRaWAN.displaySending();
@@ -104,28 +105,14 @@ void LoopLORA(int current_count,double battery_percentage)
         if (current_count < 6 )
         {
                 logMessage("Under 6 people, we dont send it for security reeasones");
-                Serial.flush();
-                Serial.end();
-                VextOFF();
-                esp_deep_sleep_start();
                 break;
         }
-        
+
         guess = static_cast<int>(current_count* factor);
         prepareTxFrame( float(guess),float(battery_percentage));
         LoRaWAN.send();
         logMessage("Send guess: " + String(guess,4));
         logMessage("Send battery: " + String(battery_percentage,4));
-        deviceState = DEVICE_STATE_CYCLE;
-
-
-        logMessage("Going to sleep now");
-        delay(100);
-        Serial.flush();
-        Serial.end();
-        VextOFF();
-        esp_deep_sleep_start();
-        logMessage("This will never be printed");
 
         break;
     }
