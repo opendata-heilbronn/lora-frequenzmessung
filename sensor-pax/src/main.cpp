@@ -28,7 +28,6 @@ float readBatteryVoltage() {
   (void)analogReadMilliVolts(VBAT_ADC_PIN);
   delay(2);
   int analogVolts = analogReadMilliVolts(VBAT_ADC_PIN);
-  Serial.println("anlalog volt: "+ analogVolts);
 
   digitalWrite(VBAT_ADC_CTL, LOW);
 
