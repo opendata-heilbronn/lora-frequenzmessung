@@ -11,7 +11,7 @@
 
 // --- Battery Configuration ---
 // Heltec V3 hardware: voltage divider (390k + 100k), battery ADC on GPIO1, control on GPIO21
-#define VBAT_ADC_CTL 21
+#define VBAT_ADC_CTL 37
 const int VBAT_ADC_PIN = 1;
 const float VOLTAGE_DIVIDER_RATIO = 4.9;  // (390k + 100k) / 100k
 
@@ -59,7 +59,7 @@ void setup()
 
   analogReadResolution(12);
   pinMode(VBAT_ADC_CTL, OUTPUT);
-  digitalWrite(VBAT_ADC_CTL, LOW);
+  digitalWrite(VBAT_ADC_CTL, HIGH);
   
   firstrun = true;
 }
