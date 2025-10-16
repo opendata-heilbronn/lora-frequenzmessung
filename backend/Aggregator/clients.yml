@@ -9,3 +9,8 @@ clients:
     uuid: "863f75b0"
     name: "density-01"
     type: "density"
+  - longitude: 9.214696
+    latitude:  49.143700
+    uuid: "f99a22e6"
+    name: "maker-space-01"
+    type: "density"
