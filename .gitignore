@@ -40,3 +40,4 @@ fabric.properties
 **/.env
 **/.DS_Store
 **/main
+.aider*

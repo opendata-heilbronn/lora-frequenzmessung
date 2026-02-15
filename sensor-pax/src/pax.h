@@ -1,37 +1,45 @@
-#define LIBPAX_ARDUINO 1
-#define LIBPAX_WIFI 0
-#define LIBPAX_BLE 1
+#ifndef PAX_H
+#define PAX_H
 
-#include "libpax_api.h"
+#include "ble_scanner.h"
+#include "customs.h"
+#include "logging.h"
 
-struct count_payload_t count_from_libpax;
-bool new_data_available = false;
-int current_count = 0;
+// Global scan result available after scanning
+ble_scan_result_t last_scan_result;
 
-
-void log()
-{
-  new_data_available = true;
-  current_count = count_from_libpax.pax;
+// Initialize the BLE scanner
+void InitPAX() {
+    logMessage("Initializing BLE scanner...");
+    int result = ble_scanner_init(BLE_RSSI_THRESHOLD);
+    if (result != 0) {
+        logMessage("BLE scanner init failed: " + String(result));
+    } else {
+        logMessage("BLE scanner initialized (RSSI threshold: " + String(BLE_RSSI_THRESHOLD) + " dBm)");
+    }
 }
 
-// libpax initialization
-void InitPAX()
-{
-  struct libpax_config_t configuration;
-  libpax_default_config(&configuration);
-  configuration.blecounter = 1;
-  configuration.blescantime = 30;
-  configuration.wificounter = 0;
-  configuration.wifi_channel_switch_interval = 50;
-  configuration.wifi_rssi_threshold = -80;
-  configuration.ble_rssi_threshold = -80;
-  libpax_update_config(&configuration);
+// Perform a BLE scan and return the count
+int ScanPAX() {
+    logMessage("Starting BLE scan for " + String(BLE_SCAN_DURATION_SEC) + " seconds...");
 
-  // internal processing initialization
-  libpax_counter_init(log, &count_from_libpax, 10, 1);
-  libpax_counter_start();
+    int result = ble_scanner_scan(BLE_SCAN_DURATION_SEC, &last_scan_result);
+
+    if (result != 0) {
+        logMessage("BLE scan failed: " + String(result));
+        return 0;
+    }
+
+    logMessage("Scan complete: " + String(last_scan_result.ble_count) +
+               " devices in " + String(last_scan_result.scan_time_ms) + "ms");
+
+    return last_scan_result.ble_count;
 }
 
-void LoopPAX() {
+// Deinitialize BLE scanner before deep sleep
+void DeinitPAX() {
+    logMessage("Deinitializing BLE scanner...");
+    ble_scanner_deinit();
 }
+
+#endif // PAX_H
