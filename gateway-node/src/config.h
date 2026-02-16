@@ -10,12 +10,13 @@
 #define WIFI_CONNECT_TIMEOUT 30000
 
 // === API Configuration ===
-// HTTP endpoint for forwarding mesh data
-// Example: "https://your-service.com" or "http://192.168.1.100:3000"
-#define API_HOST "your-service.com"
-#define API_PORT 443  // 443 for HTTPS, 80 for HTTP
-#define API_PATH "/api/pax"
-#define API_USE_HTTPS true  // true for HTTPS, false for HTTP
+// HTTP endpoint for forwarding mesh data to Aggregator
+// The Aggregator handles client lookup and forwards to Backend
+// Example: "192.168.1.100" (local server) or "aggregator.yourdomain.com"
+#define API_HOST "localhost"        // Change to your Aggregator server IP/hostname
+#define API_PORT 3002                // Aggregator HTTP port
+#define API_PATH "/mesh-data"        // Aggregator mesh endpoint
+#define API_USE_HTTPS false          // false for HTTP (local network)
 
 // Optional: API authentication token
 // Leave empty ("") if no authentication required
