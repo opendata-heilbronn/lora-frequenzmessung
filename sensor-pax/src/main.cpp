@@ -20,6 +20,21 @@
 #include "lora.h"
 #include "pax.h"
 #include "display.h"
+#include "mesh_comms.h"
+
+// Define global variables from customs.h
+char sensor_id[] = "863f75b0";
+uint8_t devEui[] = {0x70, 0xB3, 0xD5, 0x7E, 0xD0, 0x07, 0x2D, 0x3C};
+uint8_t appEui[] = {0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01};
+uint8_t appKey[] = {0xC3, 0xD6, 0x99, 0x69, 0x1F, 0x7B, 0x58, 0x9A, 0x83, 0xEC, 0x4E, 0x28, 0x85, 0xAF, 0xE9, 0x62};
+uint8_t nwkSKey[] = {0x08, 0xF6, 0xA5, 0x8E, 0x20, 0xE3, 0xAC, 0x24, 0x95, 0x1F, 0xFD, 0xCE, 0x03, 0x7E, 0x9A, 0x48};
+uint8_t appSKey[] = {0x12, 0x08, 0x61, 0xE5, 0x38, 0x60, 0x56, 0xE6, 0xC1, 0xE9, 0x6B, 0x2C, 0x97, 0xC4, 0x2E, 0xEE};
+uint32_t devAddr = (uint32_t)0x260BE3E9;
+uint16_t userChannelsMask[6] = {0x00FF, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000};
+float factor = 0.7;
+float sleepTime = 900;
+int SensorTypFrequency = 0;
+int SensorTypBattery = 1;
 
 // --- Battery Configuration ---
 // Heltec V3 hardware: voltage divider (390k + 100k), battery ADC on GPIO1, control on GPIO37
@@ -118,22 +133,43 @@ void loop() {
     logMessage("Battery: " + String(batteryVoltage, 2) + "V (" +
                String(batteryPercentage, 1) + "%)");
 
-    // === Phase 4: LoRa Transmission ===
+    // === Phase 4: Dual-Mode Communication (Mesh-First with LoRaWAN Fallback) ===
     if (pax_count >= MIN_PAX_TO_SEND) {
         // Apply factor to get estimated actual people
         int estimated_pax = (int)(pax_count * factor);
-        logMessage("Transmitting estimated PAX: " + String(estimated_pax));
+        logMessage("Estimated PAX: " + String(estimated_pax));
 
-        // Run LoRaWAN state machine until transmission completes
-        // The state machine handles INIT -> JOIN -> SEND -> CYCLE -> SLEEP
-        while (deviceState != DEVICE_STATE_SLEEP) {
-            LoopLORA(pax_count, batteryPercentage);
+        // --- Try Mesh Communication First ---
+        logMessage("--- Attempting mesh transmission ---");
+        bool meshSuccess = tryMeshTransmit(pax_count, batteryPercentage);
 
-            // Small delay to prevent tight loop
-            delay(10);
+        if (meshSuccess) {
+            logMessage("*** Mesh transmission successful ***");
+            logMessage("Data sent via mesh network");
+
+            // Cleanup mesh radio
+            deinitMeshComms();
+        } else {
+            logMessage("*** Mesh transmission failed ***");
+            logMessage("--- Falling back to LoRaWAN ---");
+
+            // Cleanup mesh radio before switching to LoRaWAN
+            deinitMeshComms();
+
+            // Small delay to ensure radio state is clean
+            delay(100);
+
+            // Run LoRaWAN state machine until transmission completes
+            // The state machine handles INIT -> JOIN -> SEND -> CYCLE -> SLEEP
+            while (deviceState != DEVICE_STATE_SLEEP) {
+                LoopLORA(pax_count, batteryPercentage);
+
+                // Small delay to prevent tight loop
+                delay(10);
+            }
+
+            logMessage("*** LoRaWAN transmission complete (fallback) ***");
         }
-
-        logMessage("LoRa transmission complete");
     } else {
         logMessage("PAX count < " + String(MIN_PAX_TO_SEND) +
                    ", skipping transmission for privacy");

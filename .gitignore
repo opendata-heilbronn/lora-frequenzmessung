@@ -41,3 +41,4 @@ fabric.properties
 **/.DS_Store
 **/main
 .aider*
+**/.pio/**
