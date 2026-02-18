@@ -40,3 +40,6 @@ fabric.properties
 **/.env
 **/.DS_Store
 **/main
+/.playwright-mcp/
+frontend/node_modules
+**/.pio

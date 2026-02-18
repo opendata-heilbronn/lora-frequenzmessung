@@ -4,35 +4,70 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/go-resty/resty/v2"
-	Misc2 "github.com/opendata-heilbronn/lora-frequenzmessung/Share/Misc"
-	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Mqtt"
-	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Yaml"
-	structs2 "github.com/opendata-heilbronn/lora-frequenzmessung/structs"
 	"log"
 	"os"
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
+	"time"
+
+	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/go-resty/resty/v2"
+	Misc2 "github.com/opendata-heilbronn/lora-frequenzmessung/Share/Misc"
+	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Mqtt"
+	structs2 "github.com/opendata-heilbronn/lora-frequenzmessung/structs"
 )
 
-var broker string
-var brokerUsername string
-var brokerPassword string
-var clientID string
-var topic string
+// sensorCache caches the sensor list from the backend API to avoid an HTTP
+// round-trip on every MQTT message.
+var sensorCache struct {
+	sync.Mutex
+	sensors   []structs2.Clients
+	fetchedAt time.Time
+}
+
+const sensorCacheTTL = 30 * time.Second
+
+func loadSensors() ([]structs2.Clients, error) {
+	sensorCache.Lock()
+	defer sensorCache.Unlock()
+
+	if time.Since(sensorCache.fetchedAt) < sensorCacheTTL && sensorCache.sensors != nil {
+		return sensorCache.sensors, nil
+	}
+
+	backendURL := Misc2.GetBackendURL()
+	resp, err := resty.New().R().
+		SetHeader("Accept", "application/json").
+		Get(fmt.Sprintf("%s/api/sensors", backendURL))
+	if err != nil {
+		return nil, fmt.Errorf("fetch sensors from backend: %w", err)
+	}
+
+	var sensors []structs2.Clients
+	if err := json.Unmarshal(resp.Body(), &sensors); err != nil {
+		return nil, fmt.Errorf("unmarshal sensors: %w", err)
+	}
+
+	sensorCache.sensors = sensors
+	sensorCache.fetchedAt = time.Now()
+	return sensors, nil
+}
 
 var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
-	//todo add checker identify data type
-	// tod hint name use the name of the sensores
 	fmt.Println("Received message: ", msg.MessageID())
 	var ttnMessage structs2.TtnMessage
-	resty := resty.New()
-	clients := Yaml.LoadYaml()
+	restyClient := resty.New()
 
-	err := json.Unmarshal(msg.Payload(), &ttnMessage)
+	clients, err := loadSensors()
+	if err != nil {
+		fmt.Println("Failed to load sensors:", err)
+		return
+	}
+
+	err = json.Unmarshal(msg.Payload(), &ttnMessage)
 	if err != nil {
 		log.Fatalf("Unable to marshal JSON due to %s", err)
 	}
@@ -55,9 +90,9 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			Value:    value,
 		}
 		found := false
-		for _, client := range clients {
-			if client.UUID == densityData.SensorID {
-				clientOfMessage = client
+		for _, c := range clients {
+			if c.UUID == densityData.SensorID {
+				clientOfMessage = c
 				found = true
 			}
 		}
@@ -70,20 +105,18 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			DataWithClient.DataType = "densityData"
 		case 1:
 			DataWithClient.DataType = "batteryData"
-
 		}
 
 		DataWithClient.Client = clientOfMessage
 		DataWithClient.Data = densityData
 		encodedData, _ := json.Marshal(DataWithClient)
 		fmt.Println(string(encodedData))
-		_, err = resty.R().SetBody(encodedData).Post(fmt.Sprintf("%s/add-sensor-data", Misc2.GetBackendURL()))
+		_, err = restyClient.R().SetBody(encodedData).Post(fmt.Sprintf("%s/add-sensor-data", Misc2.GetBackendURL()))
 		if err != nil {
 			fmt.Println("cant send data to Backend due to: ")
 			fmt.Println(err)
 		}
 	}
-
 }
 
 func main() {
@@ -98,30 +131,26 @@ func main() {
 	sub(mqttClient, topic)
 
 	signals()
-
 }
+
 func sub(client mqtt.Client, topic string) {
 	token := client.Subscribe(topic, 1, nil)
 	token.Wait()
 	fmt.Printf("Subscribed to topic: %s", topic)
 	fmt.Println()
 }
+
 func signals() {
 	fmt.Println("Starting signal handler")
 	sigs := make(chan os.Signal, 1)
-
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-
 	done := make(chan bool, 1)
-
 	go func() {
-
 		sig := <-sigs
 		fmt.Println()
 		fmt.Println(sig)
 		done <- true
 	}()
-
 	fmt.Println("awaiting signal")
 	<-done
 	fmt.Println("exiting")

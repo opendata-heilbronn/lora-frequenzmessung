@@ -55,7 +55,9 @@ void setup()
 #if ENABLE_DISPLAY
   displayMcuInit();
 #endif
+#if ENABLE_LORA
   InitLORA();
+#endif
 
   analogReadResolution(12);
   pinMode(VBAT_ADC_CTL, OUTPUT);
@@ -73,10 +75,12 @@ void loop()
     batteryPercentageLinear = calculateBatteryPercentage(batteryVoltage);
   }
 
+#if ENABLE_LORA
   if (current_count != 0)
   {
     LoopLORA(current_count, batteryPercentageLinear);
   }
+#endif
   
   firstrun = false;
 }

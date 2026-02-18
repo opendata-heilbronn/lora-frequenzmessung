@@ -34,6 +34,27 @@ services:
       MQTT_PASSWORD: ${MQTT_PASSWORD}
     ports:
       - "5001:5000"
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: docker/go/Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      DB_DSN: postgres://timescaledb:password@timescaledb:5432/postgres?sslmode=disable
+      TTN_APP_ID: ${TTN_APP_ID}
+      TTN_API_KEY: ${TTN_API_KEY}
+      SENSOR_PAX_PATH: /sensor-pax
+    volumes:
+      - ./sensor-pax:/sensor-pax:ro
+    depends_on:
+      - timescaledb
 volumes:
   grafana-storage: {}
   db-storage: {}
