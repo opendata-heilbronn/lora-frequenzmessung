@@ -4,15 +4,31 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
+	"os/signal"
+	"regexp"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Misc"
 	structs2 "github.com/opendata-heilbronn/lora-frequenzmessung/structs"
 )
+
+// uuidRegex validates sensor UUIDs (8-char lowercase hex).
+var uuidRegex = regexp.MustCompile(`^[0-9a-f]{8}$`)
+
+func validateUUID(c fiber.Ctx) (string, error) {
+	uuid := c.Params("uuid")
+	if !uuidRegex.MatchString(uuid) {
+		return "", c.Status(400).JSON(fiber.Map{"error": "invalid sensor UUID"})
+	}
+	return uuid, nil
+}
 
 func main() {
 	Misc.StartUp()
@@ -21,21 +37,32 @@ func main() {
 	app := fiber.New()
 	ctx := context.Background()
 	DBDns := Misc.GetDBDsn()
-	conn, err := pgx.Connect(ctx, DBDns)
+	pool, err := pgxpool.New(ctx, DBDns)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, " database: %v\n", DBDns)
 		fmt.Println("------------------------------------")
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close(ctx)
+	defer pool.Close()
 
-	// CORS — allow frontend dev server and production frontend
+	// CORS — read allowed origins from env, with sensible defaults
+	allowedOrigins := os.Getenv("CORS_ORIGINS")
+	if allowedOrigins == "" {
+		allowedOrigins = "http://localhost:5173,http://localhost:8080"
+	}
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: []string{"http://localhost:5173", "http://localhost:8080", "*"},
+		AllowOrigins: strings.Split(allowedOrigins, ","),
 		AllowMethods: []string{"GET", "POST", "DELETE", "OPTIONS"},
 		AllowHeaders: []string{"Content-Type", "Authorization"},
 	}))
+
+	// Security headers
+	app.Use(func(c fiber.Ctx) error {
+		c.Set("X-Content-Type-Options", "nosniff")
+		c.Set("X-Frame-Options", "DENY")
+		return c.Next()
+	})
 
 	// Existing route
 	app.Post("/add-sensor-data", func(c fiber.Ctx) error {
@@ -49,38 +76,52 @@ func main() {
 			return err
 		}
 
-		sendData(
-			conn,
+		if err := sendData(
+			pool,
 			ctx,
 			p.Data.SensorID,
 			p.Client.Name,
 			p.Client.Longitude,
 			p.Client.Latitude,
 			p.Data.Value,
-			p.DataType)
+			p.DataType); err != nil {
+			log.Printf("ERROR: sendData failed: %v", err)
+			return c.Status(500).JSON(fiber.Map{"error": "failed to insert sensor data"})
+		}
 
 		return c.Status(fiber.StatusAccepted).SendString("Message accepted")
 	})
 
 	// Sensor CRUD
-	app.Get("/api/sensors", getSensors(conn, ctx))
-	app.Post("/api/sensors", createSensor(conn, ctx))
-	app.Delete("/api/sensors/:uuid", deleteSensor(conn, ctx))
-	app.Post("/api/sensors/:uuid/register-ttn", registerTTN(conn, ctx))
+	app.Get("/api/sensors", getSensors(pool, ctx))
+	app.Post("/api/sensors", createSensor(pool, ctx))
+	app.Delete("/api/sensors/:uuid", deleteSensor(pool, ctx))
+	app.Post("/api/sensors/:uuid/register-ttn", registerTTN(pool, ctx))
 
 	// Firmware build & serving
-	app.Post("/api/sensors/:uuid/build-firmware", buildFirmware(conn, ctx))
+	app.Post("/api/sensors/:uuid/build-firmware", buildFirmware(pool, ctx))
 	app.Get("/api/sensors/:uuid/build-status", getBuildStatus())
-	app.Get("/api/sensors/:uuid/manifest.json", getFirmwareManifest(conn, ctx))
+	app.Get("/api/sensors/:uuid/manifest.json", getFirmwareManifest(pool, ctx))
 	app.Get("/api/sensors/:uuid/firmware.bin", getFirmwareBin())
 
-	err = app.Listen(":3001")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to start server: %v\n", err)
+	// Graceful shutdown
+	go func() {
+		if err := app.Listen(":3001"); err != nil {
+			log.Printf("Server error: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down server...")
+	if err := app.ShutdownWithTimeout(10 * time.Second); err != nil {
+		log.Printf("Server forced shutdown: %v", err)
 	}
+	log.Println("Server stopped")
 }
 
-func sendData(conn *pgx.Conn, ctx context.Context, uuid string, sensorName string, longitude float64, latitude float64, value float64, sensorType string) {
+func sendData(pool *pgxpool.Pool, ctx context.Context, uuid string, sensorName string, longitude float64, latitude float64, value float64, sensorType string) error {
 	t := time.Now()
 	queryInsertMetadata := `INSERT INTO sensor_data (
                         sensor_id,
@@ -92,10 +133,10 @@ func sendData(conn *pgx.Conn, ctx context.Context, uuid string, sensorName strin
                         type
                         ) VALUES ($1, $2,$3,$4,$5,$6,$7);`
 
-	_, err := conn.Exec(ctx, queryInsertMetadata, uuid, sensorName, t, longitude, latitude, value, sensorType)
+	_, err := pool.Exec(ctx, queryInsertMetadata, uuid, sensorName, t, longitude, latitude, value, sensorType)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to insert data into database: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("unable to insert data into database: %w", err)
 	}
 	fmt.Printf("Inserted sensor (%s, %v) into database \n", sensorName, value)
+	return nil
 }

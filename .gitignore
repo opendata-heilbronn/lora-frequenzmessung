@@ -38,6 +38,9 @@ fabric.properties
 *.vsix
 /docker/timescaledb/*
 **/.env
+.env.dist
+.env.ttn
+.env.local
 **/.DS_Store
 **/main
 /.playwright-mcp/

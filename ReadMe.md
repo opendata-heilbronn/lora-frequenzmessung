@@ -25,7 +25,31 @@ Run migration
 migrate -database "postgres://timescaledb:password@localhost:5432/postgres?sslmode=disable"  -path db/migrations up
 ```
 
-# Docker 
+# Frontend
+The frontend is a Vue 3 app built with Vite, located in `frontend/`.
+
+Install dependencies:
+```
+cd frontend
+npm install
+```
+
+Start the dev server (runs on http://localhost:5173, proxies `/api/*` to backend):
+```
+npm run dev
+```
+
+Production build:
+```
+npm run build
+```
+
+Run tests:
+```
+npm run test:e2e
+```
+
+# Docker
 build for backend 
 ```
 docker build -f docker/go/backend/Dockerfile .

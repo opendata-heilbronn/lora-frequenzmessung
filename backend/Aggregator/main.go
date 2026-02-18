@@ -69,20 +69,49 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 
 	err = json.Unmarshal(msg.Payload(), &ttnMessage)
 	if err != nil {
-		log.Fatalf("Unable to marshal JSON due to %s", err)
+		log.Printf("ERROR: unable to unmarshal TTN JSON: %v", err)
+		return
 	}
 	data, err := base64.StdEncoding.DecodeString(ttnMessage.UplinkMessage.FrmPayload)
 	if err != nil {
-		log.Fatal("while decoding bas64 from TTN Message:", err)
+		log.Printf("ERROR: while decoding base64 from TTN message: %v", err)
+		return
+	}
+
+	// Bounds check: need at least 1 byte to trim trailing null
+	if len(data) == 0 {
+		log.Printf("ERROR: empty payload from TTN message")
+		return
 	}
 	data = data[:len(data)-1] //remove last byte as it is null
+
 	stringSlice := strings.Split(string(data), ",")
+	if len(stringSlice) < 3 {
+		log.Printf("ERROR: payload too short, expected at least 3 fields, got %d: %q", len(stringSlice), string(data))
+		return
+	}
+
 	sensoreID := stringSlice[0]
 	NumberOfvalues := (len(stringSlice) - 1) / 2
 	var shift = 1
 	for i := 0; i < NumberOfvalues; i++ {
-		typeID, _ := strconv.Atoi((stringSlice[shift]))
-		value, _ := strconv.ParseFloat(stringSlice[shift+1], 64)
+		if shift+1 >= len(stringSlice) {
+			log.Printf("ERROR: payload index out of bounds at shift=%d, len=%d", shift, len(stringSlice))
+			break
+		}
+
+		typeID, err := strconv.Atoi(stringSlice[shift])
+		if err != nil {
+			log.Printf("ERROR: invalid typeID %q: %v", stringSlice[shift], err)
+			shift += 2
+			continue
+		}
+		value, err := strconv.ParseFloat(stringSlice[shift+1], 64)
+		if err != nil {
+			log.Printf("ERROR: invalid value %q: %v", stringSlice[shift+1], err)
+			shift += 2
+			continue
+		}
 		shift = shift + 2
 		clientOfMessage := structs2.Clients{}
 		densityData := structs2.DensityData{
@@ -97,6 +126,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			}
 		}
 		if !found {
+			log.Printf("WARN: unknown sensor %q, skipping", sensoreID)
 			return
 		}
 		var DataWithClient structs2.DensityDataWithClient

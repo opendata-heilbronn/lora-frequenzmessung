@@ -144,10 +144,12 @@ test.describe('AddSensor wizard', () => {
     // Step 2: click Register with TTN
     await page.getByRole('button', { name: /Register with TTN/ }).click()
 
-    // Step 3: TTN registration result
+    // Step 3: TTN registration result (credentials are masked)
     await expect(page.getByText('Device registered with TTN')).toBeVisible()
-    await expect(page.getByText(MOCK_TTN.dev_eui, { exact: true })).toBeVisible()
-    await expect(page.getByText(MOCK_TTN.app_key, { exact: true })).toBeVisible()
+    await expect(page.getByText('0011****6677')).toBeVisible()
+    await expect(page.getByText('AABB****8899')).toBeVisible()
+    // Copy buttons should be present
+    await expect(page.getByRole('button', { name: 'Copy' }).first()).toBeVisible()
 
     // Click Build Firmware
     await page.getByRole('button', { name: /Build Firmware/ }).click()

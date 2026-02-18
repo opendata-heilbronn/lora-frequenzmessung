@@ -5,23 +5,29 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log"
+	"math"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Sensor struct {
-	ID          int       `json:"id"`
-	UUID        string    `json:"uuid"`
-	Name        string    `json:"name"`
-	Longitude   float64   `json:"longitude"`
-	Latitude    float64   `json:"latitude"`
-	Type        string    `json:"type"`
-	DevEUI      string    `json:"dev_eui"`
-	AppKey      string    `json:"app_key"`
-	TtnDeviceID string    `json:"ttn_device_id"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID               int        `json:"id"`
+	UUID             string     `json:"uuid"`
+	Name             string     `json:"name"`
+	Longitude        float64    `json:"longitude"`
+	Latitude         float64    `json:"latitude"`
+	Type             string     `json:"type"`
+	DevEUI           string     `json:"dev_eui"`
+	AppKey           string     `json:"app_key"`
+	TtnDeviceID      string     `json:"ttn_device_id"`
+	CreatedAt        time.Time  `json:"created_at"`
+	LastBatteryValue *float64   `json:"last_battery_value"`
+	LastBatteryTime  *time.Time `json:"last_battery_time"`
+	LastDataTime     *time.Time `json:"last_data_time"`
 }
 
 type CreateSensorRequest struct {
@@ -30,14 +36,30 @@ type CreateSensorRequest struct {
 	Latitude  float64 `json:"latitude"`
 }
 
-func getSensors(conn *pgx.Conn, ctx context.Context) fiber.Handler {
+func getSensors(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		rows, err := conn.Query(ctx, `
-			SELECT id, uuid, name, longitude, latitude, type,
-			       COALESCE(dev_eui,''), COALESCE(app_key,''),
-			       COALESCE(ttn_device_id,''), created_at
-			FROM sensors
-			ORDER BY created_at DESC`)
+		rows, err := pool.Query(ctx, `
+			SELECT s.id, s.uuid, s.name, s.longitude, s.latitude, s.type,
+			       COALESCE(s.dev_eui,''), COALESCE(s.app_key,''),
+			       COALESCE(s.ttn_device_id,''), s.created_at,
+			       batt.value, batt.time,
+			       last.time
+			FROM sensors s
+			LEFT JOIN LATERAL (
+			    SELECT value, time
+			    FROM sensor_data
+			    WHERE sensor_id = s.uuid AND type = 'batteryData'
+			    ORDER BY time DESC
+			    LIMIT 1
+			) batt ON TRUE
+			LEFT JOIN LATERAL (
+			    SELECT time
+			    FROM sensor_data
+			    WHERE sensor_id = s.uuid
+			    ORDER BY time DESC
+			    LIMIT 1
+			) last ON TRUE
+			ORDER BY s.created_at DESC`)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 		}
@@ -47,7 +69,8 @@ func getSensors(conn *pgx.Conn, ctx context.Context) fiber.Handler {
 		for rows.Next() {
 			var s Sensor
 			err := rows.Scan(&s.ID, &s.UUID, &s.Name, &s.Longitude, &s.Latitude,
-				&s.Type, &s.DevEUI, &s.AppKey, &s.TtnDeviceID, &s.CreatedAt)
+				&s.Type, &s.DevEUI, &s.AppKey, &s.TtnDeviceID, &s.CreatedAt,
+				&s.LastBatteryValue, &s.LastBatteryTime, &s.LastDataTime)
 			if err != nil {
 				return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 			}
@@ -57,14 +80,20 @@ func getSensors(conn *pgx.Conn, ctx context.Context) fiber.Handler {
 	}
 }
 
-func createSensor(conn *pgx.Conn, ctx context.Context) fiber.Handler {
+func createSensor(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		var req CreateSensorRequest
 		if err := c.Bind().JSON(&req); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 		}
-		if req.Name == "" {
-			return c.Status(400).JSON(fiber.Map{"error": "name is required"})
+		if req.Name == "" || len(req.Name) > 64 {
+			return c.Status(400).JSON(fiber.Map{"error": "name is required and must be 1-64 characters"})
+		}
+		if req.Latitude < -90 || req.Latitude > 90 || math.IsNaN(req.Latitude) || math.IsInf(req.Latitude, 0) {
+			return c.Status(400).JSON(fiber.Map{"error": "latitude must be between -90 and 90"})
+		}
+		if req.Longitude < -180 || req.Longitude > 180 || math.IsNaN(req.Longitude) || math.IsInf(req.Longitude, 0) {
+			return c.Status(400).JSON(fiber.Map{"error": "longitude must be between -180 and 180"})
 		}
 
 		// Generate sensor_id (8-char hex = 4 random bytes)
@@ -72,7 +101,7 @@ func createSensor(conn *pgx.Conn, ctx context.Context) fiber.Handler {
 		rand.Read(idBytes)
 		sensorID := hex.EncodeToString(idBytes)
 
-		_, err := conn.Exec(ctx,
+		_, err := pool.Exec(ctx,
 			`INSERT INTO sensors (uuid, name, longitude, latitude, type)
 			 VALUES ($1, $2, $3, $4, $5)`,
 			sensorID, req.Name, req.Longitude, req.Latitude, "density")
@@ -90,12 +119,15 @@ func createSensor(conn *pgx.Conn, ctx context.Context) fiber.Handler {
 	}
 }
 
-func registerTTN(conn *pgx.Conn, ctx context.Context) fiber.Handler {
+func registerTTN(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		uuid := c.Params("uuid")
+		uuid, err := validateUUID(c)
+		if err != nil {
+			return err
+		}
 
 		var devEUI string
-		err := conn.QueryRow(ctx,
+		err = pool.QueryRow(ctx,
 			`SELECT COALESCE(dev_eui,'') FROM sensors WHERE uuid = $1`, uuid).
 			Scan(&devEUI)
 		if err == pgx.ErrNoRows {
@@ -125,7 +157,7 @@ func registerTTN(conn *pgx.Conn, ctx context.Context) fiber.Handler {
 			return c.Status(502).JSON(fiber.Map{"error": fmt.Sprintf("TTN registration failed: %v", err)})
 		}
 
-		tag, err := conn.Exec(ctx,
+		tag, err := pool.Exec(ctx,
 			`UPDATE sensors SET dev_eui = $1, app_key = $2, ttn_device_id = $3 WHERE uuid = $4`,
 			newDevEUI, appKey, ttnDeviceID, uuid)
 		if err != nil {
@@ -143,12 +175,15 @@ func registerTTN(conn *pgx.Conn, ctx context.Context) fiber.Handler {
 	}
 }
 
-func deleteSensor(conn *pgx.Conn, ctx context.Context) fiber.Handler {
+func deleteSensor(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		uuid := c.Params("uuid")
+		uuid, err := validateUUID(c)
+		if err != nil {
+			return err
+		}
 
 		var ttnDeviceID string
-		err := conn.QueryRow(ctx,
+		err = pool.QueryRow(ctx,
 			`SELECT COALESCE(ttn_device_id,'') FROM sensors WHERE uuid = $1`, uuid).
 			Scan(&ttnDeviceID)
 		if err == pgx.ErrNoRows {
@@ -158,12 +193,14 @@ func deleteSensor(conn *pgx.Conn, ctx context.Context) fiber.Handler {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 		}
 
-		// Delete from TTN (best effort)
+		// Delete from TTN (best effort, log errors)
 		if ttnDeviceID != "" {
-			deleteTTNDevice(ttnDeviceID)
+			if ttnErr := deleteTTNDevice(ttnDeviceID); ttnErr != nil {
+				log.Printf("WARN: failed to delete TTN device %s: %v", ttnDeviceID, ttnErr)
+			}
 		}
 
-		_, err = conn.Exec(ctx, `DELETE FROM sensors WHERE uuid = $1`, uuid)
+		_, err = pool.Exec(ctx, `DELETE FROM sensors WHERE uuid = $1`, uuid)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 		}

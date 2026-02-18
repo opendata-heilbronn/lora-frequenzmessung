@@ -21,16 +21,20 @@
       <form @submit.prevent="createSensor">
         <label>
           Name
-          <input v-model="form.name" type="text" required placeholder="e.g. density-02" />
+          <input v-model="form.name" type="text" required maxlength="64" placeholder="e.g. density-02" />
         </label>
-        <label>
-          Latitude
-          <input v-model.number="form.latitude" type="number" step="any" required placeholder="49.1438602" />
-        </label>
-        <label>
-          Longitude
-          <input v-model.number="form.longitude" type="number" step="any" required placeholder="9.2149624" />
-        </label>
+        <label>Location <span class="hint-inline">Click on the map or drag the marker, or enter coordinates manually.</span></label>
+        <MapPicker v-model="mapCoords" />
+        <div class="coord-row">
+          <label>
+            Latitude
+            <input v-model.number="form.latitude" type="number" step="any" required min="-90" max="90" placeholder="49.1438602" />
+          </label>
+          <label>
+            Longitude
+            <input v-model.number="form.longitude" type="number" step="any" required min="-180" max="180" placeholder="9.2149624" />
+          </label>
+        </div>
         <div class="actions">
           <button type="submit" class="btn-primary" :disabled="creating">
             {{ creating ? 'Creating…' : 'Create Sensor →' }}
@@ -63,8 +67,16 @@
       <div v-else-if="ttnData" class="status-done">
         Device registered with TTN!
         <div class="info-grid" style="margin-top: 1rem;">
-          <div class="info-row"><span>DevEUI</span><code>{{ ttnData.dev_eui }}</code></div>
-          <div class="info-row"><span>AppKey</span><code>{{ ttnData.app_key }}</code></div>
+          <div class="info-row">
+            <span>DevEUI</span>
+            <code>{{ maskKey(ttnData.dev_eui) }}</code>
+            <button class="btn-copy" @click="copyToClipboard(ttnData.dev_eui)">Copy</button>
+          </div>
+          <div class="info-row">
+            <span>AppKey</span>
+            <code>{{ maskKey(ttnData.app_key) }}</code>
+            <button class="btn-copy" @click="copyToClipboard(ttnData.app_key)">Copy</button>
+          </div>
           <div class="info-row"><span>TTN Device</span><code>{{ ttnData.ttn_device_id }}</code></div>
         </div>
       </div>
@@ -117,14 +129,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
+import api from '../api'
 import axios from 'axios'
 import FlashStep from '../components/FlashStep.vue'
+import MapPicker from '../components/MapPicker.vue'
 
 const stepLabels = ['Details', 'Created', 'TTN', 'Build', 'Flash']
 const step = ref(1)
 
-const form = ref({ name: '', latitude: 0, longitude: 0 })
+const DEFAULT_LAT = 49.143845257365456
+const DEFAULT_LNG = 9.214797255696741
+
+const form = ref({ name: '', latitude: DEFAULT_LAT, longitude: DEFAULT_LNG })
+
+const mapCoords = computed({
+  get: () => ({ lat: form.value.latitude, lng: form.value.longitude }),
+  set: (val: { lat: number; lng: number }) => {
+    form.value.latitude = Math.round(val.lat * 1e7) / 1e7
+    form.value.longitude = Math.round(val.lng * 1e7) / 1e7
+  },
+})
 const creating = ref(false)
 const createError = ref('')
 
@@ -139,12 +164,45 @@ const buildStatus = ref<'idle' | 'building' | 'done' | 'error'>('idle')
 const buildMessage = ref('')
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
+// Mask a hex key, showing first 4 and last 4 chars
+function maskKey(key: string): string {
+  if (key.length <= 8) return key
+  return key.slice(0, 4) + '****' + key.slice(-4)
+}
+
+async function copyToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    // Fallback: do nothing if clipboard API unavailable
+  }
+}
+
 async function createSensor() {
   creating.value = true
   createError.value = ''
+
+  // Client-side validation
+  const name = form.value.name.trim()
+  if (!name || name.length > 64) {
+    createError.value = 'Name is required and must be 1-64 characters'
+    creating.value = false
+    return
+  }
+  if (form.value.latitude < -90 || form.value.latitude > 90) {
+    createError.value = 'Latitude must be between -90 and 90'
+    creating.value = false
+    return
+  }
+  if (form.value.longitude < -180 || form.value.longitude > 180) {
+    createError.value = 'Longitude must be between -180 and 180'
+    creating.value = false
+    return
+  }
+
   try {
-    const { data } = await axios.post('/api/sensors', {
-      name: form.value.name,
+    const { data } = await api.post('/api/sensors', {
+      name: name,
       latitude: form.value.latitude,
       longitude: form.value.longitude,
     })
@@ -167,7 +225,7 @@ async function doRegisterTTN() {
   ttnError.value = ''
   ttnData.value = null
   try {
-    const { data } = await axios.post(`/api/sensors/${sensor.value.uuid}/register-ttn`)
+    const { data } = await api.post(`/api/sensors/${sensor.value.uuid}/register-ttn`)
     ttnData.value = data
     hasTTN.value = true
   } catch (e: unknown) {
@@ -190,7 +248,7 @@ async function startBuild() {
   step.value = 4
   buildStatus.value = 'building'
   try {
-    await axios.post(`/api/sensors/${sensor.value.uuid}/build-firmware`)
+    await api.post(`/api/sensors/${sensor.value.uuid}/build-firmware`)
   } catch {
     // If already building, continue polling
   }
@@ -201,39 +259,57 @@ function pollBuildStatus() {
   if (pollTimer) clearInterval(pollTimer)
   pollTimer = setInterval(async () => {
     try {
-      const { data } = await axios.get(`/api/sensors/${sensor.value.uuid}/build-status`)
+      const { data } = await api.get(`/api/sensors/${sensor.value.uuid}/build-status`)
       if (data.status === 'done') {
         buildStatus.value = 'done'
         clearInterval(pollTimer!)
+        pollTimer = null
       } else if (data.status === 'error') {
         buildStatus.value = 'error'
         buildMessage.value = data.message || 'Unknown error'
         clearInterval(pollTimer!)
+        pollTimer = null
       }
     } catch {
       // ignore transient errors
     }
   }, 3000)
 }
+
+onUnmounted(() => {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+})
 </script>
 
 <style scoped>
 h2 { margin-top: 0; }
 .steps { display: flex; gap: 0; margin-bottom: 2rem; }
-.step { display: flex; align-items: center; gap: .5rem; padding: .75rem 1.25rem; background: #eee; flex: 1; position: relative; }
+.step { display: flex; align-items: center; gap: .5rem; padding: .75rem 1.25rem; background: #eee; flex: 1; position: relative; min-height: 56px; box-sizing: border-box; }
 .step::after { content: ''; position: absolute; right: -14px; top: 0; bottom: 0; width: 0; border-top: 28px solid transparent; border-bottom: 28px solid transparent; border-left: 14px solid #eee; z-index: 1; }
 .step:last-child::after { display: none; }
+.step:nth-child(1) { z-index: 5; }
+.step:nth-child(2) { z-index: 4; }
+.step:nth-child(3) { z-index: 3; }
+.step:nth-child(4) { z-index: 2; }
+.step:nth-child(5) { z-index: 1; }
 .step.active { background: #1a1a2e; color: white; }
 .step.active::after { border-left-color: #1a1a2e; }
 .step.done { background: #27ae60; color: white; }
 .step.done::after { border-left-color: #27ae60; }
 .step-num { width: 24px; height: 24px; border-radius: 50%; background: rgba(255,255,255,.25); display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: .85rem; }
+.step:not(.active):not(.done) .step-num { background: rgba(0,0,0,.12); }
 .step-label { font-size: .9rem; font-weight: 500; }
 .card { background: white; border-radius: 8px; padding: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
 .card h3 { margin-top: 0; }
 label { display: flex; flex-direction: column; gap: .35rem; margin-bottom: 1rem; font-weight: 500; }
 input { padding: .6rem .75rem; border: 1px solid #ccc; border-radius: 6px; font-size: 1rem; width: 100%; }
 input:focus { outline: 2px solid #1a1a2e; border-color: transparent; }
+.coord-row { display: flex; gap: 1rem; }
+.coord-row label { flex: 1; }
+.hint-inline { font-size: .8rem; font-weight: 400; color: #888; margin-left: .25rem; }
 .actions { margin-top: 1.5rem; display: flex; gap: 1rem; }
 .btn-primary { background: #1a1a2e; color: white; border: none; padding: .65rem 1.25rem; border-radius: 6px; cursor: pointer; font-size: 1rem; }
 .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
@@ -241,10 +317,12 @@ input:focus { outline: 2px solid #1a1a2e; border-color: transparent; }
 .btn-secondary { background: #eee; color: #333; padding: .65rem 1.25rem; border-radius: 6px; text-decoration: none; font-size: 1rem; border: none; cursor: pointer; }
 .btn-secondary:hover { background: #ddd; }
 .info-grid { border: 1px solid #eee; border-radius: 6px; overflow: hidden; }
-.info-row { display: flex; padding: .65rem 1rem; border-bottom: 1px solid #eee; }
+.info-row { display: flex; padding: .65rem 1rem; border-bottom: 1px solid #eee; align-items: center; }
 .info-row:last-child { border-bottom: none; }
 .info-row span:first-child { width: 120px; font-weight: 600; color: #666; flex-shrink: 0; }
-.info-row code { font-family: monospace; font-size: .9rem; word-break: break-all; }
+.info-row code { font-family: monospace; font-size: .9rem; word-break: break-all; flex: 1; }
+.btn-copy { background: #eee; border: 1px solid #ccc; border-radius: 4px; padding: .2rem .5rem; cursor: pointer; font-size: .8rem; margin-left: .5rem; flex-shrink: 0; }
+.btn-copy:hover { background: #ddd; }
 .badge-ok { background: #e8f8ef; color: #27ae60; padding: .2rem .6rem; border-radius: 4px; font-weight: 600; }
 .badge-warn { background: #fdf0e8; color: #e67e22; padding: .2rem .6rem; border-radius: 4px; font-weight: 600; }
 .error-msg { color: #c0392b; margin-top: .75rem; padding: .75rem; background: #fdecea; border-radius: 6px; }

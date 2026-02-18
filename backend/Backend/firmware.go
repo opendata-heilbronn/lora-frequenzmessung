@@ -5,17 +5,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type buildState struct {
+	mu      sync.Mutex
 	Status  string `json:"status"` // "building" | "done" | "error"
 	Message string `json:"message,omitempty"`
 	BinPath string `json:"-"`
@@ -23,12 +27,20 @@ type buildState struct {
 
 var buildStatuses sync.Map // key: uuid → *buildState
 
-func buildFirmware(conn *pgx.Conn, dbCtx context.Context) fiber.Handler {
+// buildSemaphore limits concurrent firmware builds.
+var buildSemaphore = make(chan struct{}, 2)
+
+const buildTimeout = 5 * time.Minute
+
+func buildFirmware(pool *pgxpool.Pool, dbCtx context.Context) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		uuid := c.Params("uuid")
+		uuid, err := validateUUID(c)
+		if err != nil {
+			return err
+		}
 
 		var devEUI, appKey string
-		err := conn.QueryRow(dbCtx,
+		err = pool.QueryRow(dbCtx,
 			`SELECT COALESCE(dev_eui,''), COALESCE(app_key,'') FROM sensors WHERE uuid = $1`, uuid).
 			Scan(&devEUI, &appKey)
 		if err == pgx.ErrNoRows {
@@ -40,7 +52,11 @@ func buildFirmware(conn *pgx.Conn, dbCtx context.Context) fiber.Handler {
 
 		// Check if already building
 		if st, ok := buildStatuses.Load(uuid); ok {
-			if st.(*buildState).Status == "building" {
+			bs := st.(*buildState)
+			bs.mu.Lock()
+			status := bs.Status
+			bs.mu.Unlock()
+			if status == "building" {
 				return c.Status(202).JSON(fiber.Map{"status": "already building"})
 			}
 		}
@@ -51,7 +67,13 @@ func buildFirmware(conn *pgx.Conn, dbCtx context.Context) fiber.Handler {
 		hasTTN := devEUI != ""
 
 		go func() {
+			// Acquire build semaphore
+			buildSemaphore <- struct{}{}
+			defer func() { <-buildSemaphore }()
+
 			binPath, err := runPlatformioBuild(uuid, devEUI, appKey, hasTTN)
+			state.mu.Lock()
+			defer state.mu.Unlock()
 			if err != nil {
 				state.Status = "error"
 				state.Message = err.Error()
@@ -67,21 +89,33 @@ func buildFirmware(conn *pgx.Conn, dbCtx context.Context) fiber.Handler {
 
 func getBuildStatus() fiber.Handler {
 	return func(c fiber.Ctx) error {
-		uuid := c.Params("uuid")
+		uuid, err := validateUUID(c)
+		if err != nil {
+			return err
+		}
 		st, ok := buildStatuses.Load(uuid)
 		if !ok {
 			return c.Status(404).JSON(fiber.Map{"status": "not_started"})
 		}
-		return c.JSON(st.(*buildState))
+		bs := st.(*buildState)
+		bs.mu.Lock()
+		defer bs.mu.Unlock()
+		return c.JSON(fiber.Map{
+			"status":  bs.Status,
+			"message": bs.Message,
+		})
 	}
 }
 
-func getFirmwareManifest(conn *pgx.Conn, dbCtx context.Context) fiber.Handler {
+func getFirmwareManifest(pool *pgxpool.Pool, dbCtx context.Context) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		uuid := c.Params("uuid")
+		uuid, err := validateUUID(c)
+		if err != nil {
+			return err
+		}
 
 		var name string
-		err := conn.QueryRow(dbCtx, `SELECT name FROM sensors WHERE uuid = $1`, uuid).Scan(&name)
+		err = pool.QueryRow(dbCtx, `SELECT name FROM sensors WHERE uuid = $1`, uuid).Scan(&name)
 		if err == pgx.ErrNoRows {
 			return c.Status(404).JSON(fiber.Map{"error": "sensor not found"})
 		}
@@ -109,14 +143,25 @@ func getFirmwareManifest(conn *pgx.Conn, dbCtx context.Context) fiber.Handler {
 
 func getFirmwareBin() fiber.Handler {
 	return func(c fiber.Ctx) error {
-		uuid := c.Params("uuid")
+		uuid, err := validateUUID(c)
+		if err != nil {
+			return err
+		}
 
 		st, ok := buildStatuses.Load(uuid)
-		if !ok || st.(*buildState).Status != "done" {
+		if !ok {
+			return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
+		}
+		bs := st.(*buildState)
+		bs.mu.Lock()
+		status := bs.Status
+		binPath := bs.BinPath
+		bs.mu.Unlock()
+
+		if status != "done" {
 			return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
 		}
 
-		binPath := st.(*buildState).BinPath
 		if _, err := os.Stat(binPath); os.IsNotExist(err) {
 			return c.Status(404).JSON(fiber.Map{"error": "firmware binary not found"})
 		}
@@ -159,15 +204,18 @@ func runPlatformioBuild(uuid, devEUI, appKey string, hasTTN bool) (string, error
 		return "", fmt.Errorf("copy source: %w", err)
 	}
 
-	// Generate customs.h
+	// Generate customs.h (restrictive permissions — contains keys)
 	customsH := generateCustomsH(uuid, devEUI, appKey, hasTTN)
 	customsPath := filepath.Join(buildDir, "src", "customs.h")
-	if err := os.WriteFile(customsPath, []byte(customsH), 0644); err != nil {
+	if err := os.WriteFile(customsPath, []byte(customsH), 0600); err != nil {
 		return "", fmt.Errorf("write customs.h: %w", err)
 	}
 
-	// Run platformio build
-	cmd := exec.Command("platformio", "run")
+	// Run platformio build with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), buildTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "platformio", "run")
 	cmd.Dir = buildDir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -182,6 +230,11 @@ func runPlatformioBuild(uuid, devEUI, appKey string, hasTTN bool) (string, error
 	}
 	if err := copyFile(firmwareSrc, firmwareDst); err != nil {
 		return "", fmt.Errorf("copy firmware.bin: %w", err)
+	}
+
+	// Clean up build directory now that firmware binary has been copied
+	if err := os.RemoveAll(buildDir); err != nil {
+		log.Printf("WARN: failed to clean up build dir %s: %v", buildDir, err)
 	}
 
 	return firmwareDst, nil
