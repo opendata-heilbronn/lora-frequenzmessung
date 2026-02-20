@@ -1,10 +1,9 @@
 <template>
   <div class="flash-wrap">
     <!-- Import esp-web-tools as a side-effect to register the custom element -->
-    <div v-if="!webSerialSupported" class="no-serial">
-      <strong>Web Serial not supported.</strong>
+    <OnyxInfoCard v-if="!webSerialSupported" color="warning" headline="Web Serial not supported.">
       Use Chrome or Edge (desktop) to flash the sensor via USB.
-    </div>
+    </OnyxInfoCard>
     <div v-else class="flash-btn-wrap">
       <esp-web-install-button :manifest="manifestUrl">
         <button slot="activate" class="flash-button">⚡ Connect & Flash Sensor</button>
@@ -16,6 +15,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { OnyxInfoCard } from 'sit-onyx'
 
 // Register the web component
 import 'esp-web-tools'
@@ -33,17 +33,19 @@ onMounted(() => {
 
 <style scoped>
 .flash-wrap { margin-top: 1.5rem; }
-.no-serial { background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; padding: 1rem; color: #856404; }
 .flash-btn-wrap { display: flex; align-items: center; gap: 1rem; }
 .flash-button {
-  background: #e67e22;
-  color: white;
-  border: none;
-  padding: .75rem 1.5rem;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 1.05rem;
+  font-family: var(--onyx-font-family-paragraph);
+  font-size: var(--onyx-font-size-md);
   font-weight: 600;
+  background: var(--onyx-color-base-primary-500);
+  color: var(--onyx-color-text-icons-neutral-inverted);
+  border: none;
+  padding: var(--onyx-density-sm) var(--onyx-density-lg);
+  border-radius: var(--onyx-radius-md);
+  cursor: pointer;
 }
-.flash-button:hover { background: #d35400; }
+.flash-button:hover {
+  background: var(--onyx-color-base-primary-600);
+}
 </style>

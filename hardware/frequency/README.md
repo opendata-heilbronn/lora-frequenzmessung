@@ -134,6 +134,69 @@ Compatible with:
 - Total deep sleep: ~10-15uA board level
 - With 1000mAh battery + 6V/1W solar: indefinite outdoor operation
 
+## Development Setup
+
+### Prerequisites
+
+- Go 1.21+
+- Node.js 18+
+- Docker & Docker Compose
+- [golang-migrate](https://github.com/golang-migrate/migrate) CLI
+
+### Start Infrastructure
+
+```bash
+docker-compose up -d   # TimescaleDB, Mosquitto, Grafana
+migrate -database "$DB_DSN" -path db/migrations up
+```
+
+### Start the Backend
+
+```bash
+cd backend
+cp ../.env.local.dist .env.local   # adjust DB_DSN, TTN keys etc.
+source .env.local
+go run ./Backend
+```
+
+The API server starts on **port 3001**.
+
+### Start the Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The dev server starts on **port 5173** and proxies `/api/*` to the backend.
+
+### Verify Tests
+
+**Backend (Go):**
+
+```bash
+cd backend
+go test ./...
+```
+
+**Frontend (Playwright — unit tests, no backend needed):**
+
+```bash
+cd frontend
+npm install
+npx playwright install --with-deps chromium
+npx playwright test --project=unit
+```
+
+**Frontend (integration tests — requires running backend):**
+
+```bash
+npx playwright test --project=integration --workers=1
+```
+
+All 77 unit tests should pass. Integration tests create real sensors and need the backend + database running.
+
 ---
 
 Generated with assistance from Claude | 2026-02-15

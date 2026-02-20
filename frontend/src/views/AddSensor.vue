@@ -1,141 +1,158 @@
 <template>
   <div>
-    <h2>Add New Sensor</h2>
+    <OnyxHeadline is="h2">Add New Sensor</OnyxHeadline>
 
     <!-- Step indicators -->
-    <div class="steps">
-      <div
-        v-for="(label, i) in stepLabels"
-        :key="i"
-        class="step"
-        :class="{ active: step === i + 1, done: step > i + 1 }"
-      >
-        <span class="step-num">{{ step > i + 1 ? '✓' : i + 1 }}</span>
-        <span class="step-label">{{ label }}</span>
-      </div>
-    </div>
+    <OnyxProgressSteps :steps="progressSteps" :model-value="step" style="margin-bottom: 2rem;" />
 
     <!-- Step 1: Details -->
-    <div v-if="step === 1" class="card">
-      <h3>Sensor Details</h3>
-      <form @submit.prevent="createSensor">
-        <label>
-          Name
-          <input v-model="form.name" type="text" required maxlength="64" placeholder="e.g. density-02" />
-        </label>
-        <label>Location <span class="hint-inline">Click on the map or drag the marker, or enter coordinates manually.</span></label>
+    <OnyxCard v-if="step === 1">
+      <OnyxHeadline is="h3">Sensor Details</OnyxHeadline>
+      <form class="form-fields" @submit.prevent="createSensor">
+        <OnyxInput
+          label="Name"
+          :model-value="form.name"
+          @update:model-value="form.name = $event ?? ''"
+          type="text"
+          required
+          :max-length="64"
+          placeholder="e.g. density-02"
+        />
+        <p class="hint">Location — click on the map or drag the marker, or enter coordinates manually.</p>
         <MapPicker v-model="mapCoords" />
         <div class="coord-row">
-          <label>
+          <label class="coord-label">
             Latitude
-            <input v-model.number="form.latitude" type="number" step="any" required min="-90" max="90" placeholder="49.1438602" />
+            <input v-model.number="form.latitude" type="number" step="any" required min="-90" max="90" placeholder="49.1438602" class="coord-input" />
           </label>
-          <label>
+          <label class="coord-label">
             Longitude
-            <input v-model.number="form.longitude" type="number" step="any" required min="-180" max="180" placeholder="9.2149624" />
+            <input v-model.number="form.longitude" type="number" step="any" required min="-180" max="180" placeholder="9.2149624" class="coord-input" />
           </label>
         </div>
         <div class="actions">
-          <button type="submit" class="btn-primary" :disabled="creating">
-            {{ creating ? 'Creating…' : 'Create Sensor →' }}
-          </button>
+          <OnyxButton type="submit" label="Create Sensor →" color="primary" :loading="creating" :disabled="creating" />
         </div>
-        <div v-if="createError" class="error-msg">{{ createError }}</div>
+        <div v-if="createError" class="error-msg">
+          <OnyxInfoCard color="danger">{{ createError }}</OnyxInfoCard>
+        </div>
       </form>
-    </div>
+    </OnyxCard>
 
     <!-- Step 2: Created -->
-    <div v-if="step === 2" class="card">
-      <h3>Sensor Created</h3>
-      <div class="info-grid">
-        <div class="info-row"><span>UUID</span><code>{{ sensor.uuid }}</code></div>
-        <div class="info-row"><span>Name</span><code>{{ sensor.name }}</code></div>
-        <div class="info-row"><span>Type</span><code>{{ sensor.type }}</code></div>
-      </div>
+    <OnyxCard v-if="step === 2">
+      <OnyxHeadline is="h3">Sensor Created</OnyxHeadline>
+      <dl class="info-grid">
+        <div class="info-row"><dt>UUID</dt><dd><code>{{ sensor.uuid }}</code></dd></div>
+        <div class="info-row"><dt>Name</dt><dd><code>{{ sensor.name }}</code></dd></div>
+        <div class="info-row"><dt>Type</dt><dd><code>{{ sensor.type }}</code></dd></div>
+      </dl>
       <div class="actions">
-        <button class="btn-primary" @click="startTTN">Register with TTN →</button>
-        <button class="btn-secondary" @click="skipTTN">Skip TTN, Build Firmware →</button>
+        <OnyxButton label="Register with TTN →" color="primary" @click="startTTN" />
+        <OnyxButton label="Skip TTN, Build Firmware →" color="neutral" @click="skipTTN" />
       </div>
-    </div>
+    </OnyxCard>
 
     <!-- Step 3: TTN Registration -->
-    <div v-if="step === 3" class="card">
-      <h3>TTN Registration</h3>
+    <OnyxCard v-if="step === 3">
+      <OnyxHeadline is="h3">TTN Registration</OnyxHeadline>
       <div v-if="ttnRegistering" class="status-building">
-        <span class="spinner">⏳</span> Registering device with The Things Network…
+        <OnyxLoadingIndicator type="circle" />
+        <span>Registering device with The Things Network…</span>
       </div>
-      <div v-else-if="ttnData" class="status-done">
-        Device registered with TTN!
-        <div class="info-grid" style="margin-top: 1rem;">
+      <div v-else-if="ttnData">
+        <OnyxInfoCard color="success">Device registered with TTN!</OnyxInfoCard>
+        <dl class="info-grid" style="margin-top: 1rem;">
           <div class="info-row">
-            <span>DevEUI</span>
-            <code>{{ maskKey(ttnData.dev_eui) }}</code>
-            <button class="btn-copy" @click="copyToClipboard(ttnData.dev_eui)">Copy</button>
+            <dt>DevEUI</dt>
+            <dd>
+              <code>{{ maskKey(ttnData.dev_eui) }}</code>
+              <OnyxButton label="Copy" mode="outline" color="neutral" density="compact" @click="copyToClipboard(ttnData!.dev_eui)" />
+            </dd>
           </div>
           <div class="info-row">
-            <span>AppKey</span>
-            <code>{{ maskKey(ttnData.app_key) }}</code>
-            <button class="btn-copy" @click="copyToClipboard(ttnData.app_key)">Copy</button>
+            <dt>AppKey</dt>
+            <dd>
+              <code>{{ maskKey(ttnData.app_key) }}</code>
+              <OnyxButton label="Copy" mode="outline" color="neutral" density="compact" @click="copyToClipboard(ttnData!.app_key)" />
+            </dd>
           </div>
-          <div class="info-row"><span>TTN Device</span><code>{{ ttnData.ttn_device_id }}</code></div>
-        </div>
+          <div class="info-row"><dt>TTN Device</dt><dd><code>{{ ttnData.ttn_device_id }}</code></dd></div>
+        </dl>
       </div>
       <div v-else-if="ttnError" class="error-msg">
-        TTN registration failed: {{ ttnError }}
+        <OnyxInfoCard color="danger">TTN registration failed: {{ ttnError }}</OnyxInfoCard>
       </div>
       <div class="actions">
-        <button v-if="ttnData || ttnError" class="btn-primary" @click="startBuild">Build Firmware →</button>
-        <button v-if="ttnError" class="btn-secondary" @click="doRegisterTTN">Retry TTN</button>
+        <OnyxButton v-if="ttnData || ttnError" label="Build Firmware →" color="primary" @click="startBuild" />
+        <OnyxButton v-if="ttnError" label="Retry TTN" color="neutral" @click="doRegisterTTN" />
       </div>
-    </div>
+    </OnyxCard>
 
     <!-- Step 4: Build firmware -->
-    <div v-if="step === 4" class="card">
-      <h3>Build Firmware</h3>
-      <div v-if="!hasTTN" class="notice">
+    <OnyxCard v-if="step === 4">
+      <OnyxHeadline is="h3">Build Firmware</OnyxHeadline>
+      <OnyxInfoCard v-if="!hasTTN" color="warning" style="margin-bottom: 1rem;">
         Firmware will be built <strong>without LoRa</strong> — sensor will count PAX but not transmit.
-      </div>
+      </OnyxInfoCard>
       <div v-if="buildStatus === 'building'" class="status-building">
-        <span class="spinner">⏳</span> Compiling firmware with PlatformIO…
+        <OnyxLoadingIndicator type="circle" />
+        <span>Compiling firmware with PlatformIO…</span>
         <p class="hint">This typically takes 30–60 seconds.</p>
       </div>
-      <div v-else-if="buildStatus === 'done'" class="status-done">
-        Firmware compiled successfully!
+      <div v-else-if="buildStatus === 'done'">
+        <OnyxInfoCard color="success">Firmware compiled successfully!</OnyxInfoCard>
       </div>
       <div v-else-if="buildStatus === 'error'" class="error-msg">
-        Build failed: {{ buildMessage }}
+        <OnyxInfoCard color="danger">Build failed: {{ buildMessage }}</OnyxInfoCard>
       </div>
       <div v-else class="status-idle">
-        <button class="btn-primary" @click="startBuild">Start Build</button>
+        <OnyxButton label="Start Build" color="primary" @click="startBuild" />
       </div>
       <div v-if="buildStatus === 'done'" class="actions">
-        <button class="btn-primary" @click="step = 5">Flash Sensor →</button>
+        <OnyxButton label="Flash Sensor →" color="primary" @click="step = 5" />
       </div>
-    </div>
+    </OnyxCard>
 
     <!-- Step 5: Flash -->
-    <div v-if="step === 5" class="card">
-      <h3>Flash Sensor via USB</h3>
+    <OnyxCard v-if="step === 5">
+      <OnyxHeadline is="h3">Flash Sensor via USB</OnyxHeadline>
       <div class="flash-instructions">
         <p>Connect your ESP32 sensor via USB, then click <strong>Install</strong>.</p>
         <p class="hint">Requires Chrome or Edge browser. Web Serial API must be enabled.</p>
       </div>
       <FlashStep :manifest-url="`/api/sensors/${sensor.uuid}/manifest.json`" />
       <div class="actions">
-        <router-link to="/" class="btn-secondary">← Back to sensor list</router-link>
+        <OnyxButton label="← Back to sensor list" color="neutral" link="/" />
       </div>
-    </div>
+    </OnyxCard>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onUnmounted } from 'vue'
+import {
+  OnyxHeadline,
+  OnyxCard,
+  OnyxInput,
+  OnyxButton,
+  OnyxLoadingIndicator,
+  OnyxInfoCard,
+  OnyxProgressSteps,
+} from 'sit-onyx'
 import api from '../api'
 import axios from 'axios'
 import FlashStep from '../components/FlashStep.vue'
 import MapPicker from '../components/MapPicker.vue'
 
-const stepLabels = ['Details', 'Created', 'TTN', 'Build', 'Flash']
+const progressSteps = [
+  { label: 'Details' },
+  { label: 'Created' },
+  { label: 'TTN' },
+  { label: 'Build' },
+  { label: 'Flash' },
+]
+
 const step = ref(1)
 
 const DEFAULT_LAT = 49.143845257365456
@@ -285,52 +302,98 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-h2 { margin-top: 0; }
-.steps { display: flex; gap: 0; margin-bottom: 2rem; }
-.step { display: flex; align-items: center; gap: .5rem; padding: .75rem 1.25rem; background: #eee; flex: 1; position: relative; min-height: 56px; box-sizing: border-box; }
-.step::after { content: ''; position: absolute; right: -14px; top: 0; bottom: 0; width: 0; border-top: 28px solid transparent; border-bottom: 28px solid transparent; border-left: 14px solid #eee; z-index: 1; }
-.step:last-child::after { display: none; }
-.step:nth-child(1) { z-index: 5; }
-.step:nth-child(2) { z-index: 4; }
-.step:nth-child(3) { z-index: 3; }
-.step:nth-child(4) { z-index: 2; }
-.step:nth-child(5) { z-index: 1; }
-.step.active { background: #1a1a2e; color: white; }
-.step.active::after { border-left-color: #1a1a2e; }
-.step.done { background: #27ae60; color: white; }
-.step.done::after { border-left-color: #27ae60; }
-.step-num { width: 24px; height: 24px; border-radius: 50%; background: rgba(255,255,255,.25); display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: .85rem; }
-.step:not(.active):not(.done) .step-num { background: rgba(0,0,0,.12); }
-.step-label { font-size: .9rem; font-weight: 500; }
-.card { background: white; border-radius: 8px; padding: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
-.card h3 { margin-top: 0; }
-label { display: flex; flex-direction: column; gap: .35rem; margin-bottom: 1rem; font-weight: 500; }
-input { padding: .6rem .75rem; border: 1px solid #ccc; border-radius: 6px; font-size: 1rem; width: 100%; }
-input:focus { outline: 2px solid #1a1a2e; border-color: transparent; }
-.coord-row { display: flex; gap: 1rem; }
-.coord-row label { flex: 1; }
-.hint-inline { font-size: .8rem; font-weight: 400; color: #888; margin-left: .25rem; }
-.actions { margin-top: 1.5rem; display: flex; gap: 1rem; }
-.btn-primary { background: #1a1a2e; color: white; border: none; padding: .65rem 1.25rem; border-radius: 6px; cursor: pointer; font-size: 1rem; }
-.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
-.btn-primary:not(:disabled):hover { background: #2d2d5a; }
-.btn-secondary { background: #eee; color: #333; padding: .65rem 1.25rem; border-radius: 6px; text-decoration: none; font-size: 1rem; border: none; cursor: pointer; }
-.btn-secondary:hover { background: #ddd; }
-.info-grid { border: 1px solid #eee; border-radius: 6px; overflow: hidden; }
-.info-row { display: flex; padding: .65rem 1rem; border-bottom: 1px solid #eee; align-items: center; }
+.form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.coord-row {
+  display: flex;
+  gap: 1rem;
+}
+.coord-label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-weight: 500;
+  font-size: var(--onyx-font-size-sm);
+  color: var(--onyx-color-text-icons-neutral-medium);
+}
+.coord-input {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--onyx-color-base-neutral-300);
+  border-radius: var(--onyx-radius-md);
+  font-family: var(--onyx-font-family-paragraph), sans-serif;
+  font-size: 1rem;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--onyx-color-base-background-blank);
+  color: var(--onyx-color-text-icons-neutral-intense);
+}
+.coord-input:focus {
+  outline: 2px solid var(--onyx-color-base-primary-500);
+  border-color: transparent;
+}
+
+.actions {
+  margin-top: 1.5rem;
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.info-grid {
+  border: 1px solid var(--onyx-color-base-neutral-200);
+  border-radius: var(--onyx-radius-md);
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+.info-row {
+  display: flex;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--onyx-color-base-neutral-200);
+  align-items: center;
+  gap: 0.5rem;
+}
+.info-row:nth-child(even) {
+  background: var(--onyx-color-base-neutral-100);
+}
 .info-row:last-child { border-bottom: none; }
-.info-row span:first-child { width: 120px; font-weight: 600; color: #666; flex-shrink: 0; }
-.info-row code { font-family: monospace; font-size: .9rem; word-break: break-all; flex: 1; }
-.btn-copy { background: #eee; border: 1px solid #ccc; border-radius: 4px; padding: .2rem .5rem; cursor: pointer; font-size: .8rem; margin-left: .5rem; flex-shrink: 0; }
-.btn-copy:hover { background: #ddd; }
-.badge-ok { background: #e8f8ef; color: #27ae60; padding: .2rem .6rem; border-radius: 4px; font-weight: 600; }
-.badge-warn { background: #fdf0e8; color: #e67e22; padding: .2rem .6rem; border-radius: 4px; font-weight: 600; }
-.error-msg { color: #c0392b; margin-top: .75rem; padding: .75rem; background: #fdecea; border-radius: 6px; }
-.notice { background: #fef9e7; border: 1px solid #f9e79f; color: #7d6608; padding: .75rem 1rem; border-radius: 6px; margin-bottom: 1rem; }
-.status-building { display: flex; flex-direction: column; align-items: center; padding: 2rem; gap: .5rem; }
-.spinner { font-size: 2rem; animation: spin 2s linear infinite; }
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-.hint { color: #999; font-size: .85rem; margin: 0; }
-.status-done { color: #27ae60; font-size: 1.1rem; font-weight: 600; padding: 1rem 0; }
-.flash-instructions p { margin: 0 0 .5rem; }
+.info-row dt {
+  width: 120px;
+  font-weight: 600;
+  color: var(--onyx-color-text-icons-neutral-medium);
+  flex-shrink: 0;
+}
+.info-row dd {
+  font-family: monospace;
+  font-size: 0.9rem;
+  word-break: break-all;
+  flex: 1;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.error-msg { margin-top: 0.75rem; }
+
+.status-building {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem;
+  gap: 0.5rem;
+}
+
+.hint {
+  color: var(--onyx-color-text-icons-neutral-soft);
+  font-size: var(--onyx-font-size-sm);
+  margin: 0;
+}
+
+.flash-instructions p { margin: 0 0 0.5rem; }
 </style>

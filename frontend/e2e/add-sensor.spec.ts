@@ -216,36 +216,34 @@ test.describe('AddSensor wizard', () => {
 
     await page.goto('/add')
 
-    // Step 1 active
-    const steps = page.locator('.step')
-    await expect(steps.nth(0)).toHaveClass(/active/)
-    await expect(steps.nth(1)).not.toHaveClass(/active|done/)
+    // Step 1 active: Sensor Details card visible
+    await expect(page.getByText('Sensor Details')).toBeVisible()
+    await expect(page.getByText('Sensor Created')).not.toBeVisible()
 
     await fillAndCreateSensor(page)
 
-    // Step 2 active, step 1 done
-    await expect(steps.nth(0)).toHaveClass(/done/)
-    await expect(steps.nth(1)).toHaveClass(/active/)
+    // Step 2 active: Sensor Created card visible
+    await expect(page.getByText('Sensor Created')).toBeVisible()
+    await expect(page.getByText('Sensor Details')).not.toBeVisible()
 
     await page.getByRole('button', { name: /Register with TTN/ }).click()
     await expect(page.getByText('Device registered with TTN')).toBeVisible()
 
-    // Step 3 active, steps 1-2 done
-    await expect(steps.nth(0)).toHaveClass(/done/)
-    await expect(steps.nth(1)).toHaveClass(/done/)
-    await expect(steps.nth(2)).toHaveClass(/active/)
+    // Step 3 active: TTN Registration card visible
+    await expect(page.getByText('TTN Registration')).toBeVisible()
+    await expect(page.getByText('Sensor Created')).not.toBeVisible()
 
     await page.getByRole('button', { name: /Build Firmware/ }).click()
     await expect(page.getByText('Firmware compiled successfully')).toBeVisible()
 
-    // Step 4 active, steps 1-3 done
-    await expect(steps.nth(2)).toHaveClass(/done/)
-    await expect(steps.nth(3)).toHaveClass(/active/)
+    // Step 4 active: Build Firmware card visible
+    await expect(page.getByText('Build Firmware')).toBeVisible()
+    await expect(page.getByText('TTN Registration')).not.toBeVisible()
 
     await page.getByRole('button', { name: /Flash Sensor/ }).click()
 
-    // Step 5 active, steps 1-4 done
-    await expect(steps.nth(3)).toHaveClass(/done/)
-    await expect(steps.nth(4)).toHaveClass(/active/)
+    // Step 5 active: Flash Sensor via USB card visible
+    await expect(page.getByText('Flash Sensor via USB')).toBeVisible()
+    await expect(page.getByText('Build Firmware')).not.toBeVisible()
   })
 })

@@ -50,5 +50,7 @@ onUnmounted(() => {
 .sensor-map {
   width: 100%;
   height: 260px;
+  border-radius: var(--onyx-radius-md);
+  overflow: hidden;
 }
 </style>
