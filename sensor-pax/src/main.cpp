@@ -1,86 +1,94 @@
-#define LoRaWAN_DEBUG_LEVEL 0
-#define uS_TO_S_FACTOR 1000000ULL
+/**
+ *
+ * FOR THIS EXAMPLE TO WORK, YOU MUST INSTALL THE "LoRaWAN_ESP32" LIBRARY USING
+ * THE LIBRARY MANAGER IN THE ARDUINO IDE.
+ *
+ * This code will send a two-byte LoRaWAN message every 15 minutes. The first
+ * byte is a simple 8-bit counter, the second is the ESP32 chip temperature
+ * directly after waking up from its 15 minute sleep in degrees celsius + 100.
+ *
+ * If your NVS partition does not have stored TTN / LoRaWAN provisioning
+ * information in it yet, you will be prompted for them on the serial port and
+ * they will be stored for subsequent use.
+ *
+ * See https://github.com/ropg/LoRaWAN_ESP32
+*/
+
+
+// Pause between sends in seconds, so this is every 15 minutes. (Delay will be
+// longer if regulatory or TTN Fair Use Policy requires it.)
+#define MINIMUM_DELAY 900
 
 #include <Arduino.h>
-#include "HT_lCMEN2R13EFC1.h"
+#include <heltec_unofficial.h>
+#include <LoRaWAN_ESP32.h>
 
-#include "logging.h"
-#include "lora.h"
-#include "pax.h"
-#include "display.h"
+LoRaWANNode* node;
 
-// --- Battery Configuration ---
-// Heltec V3 hardware: voltage divider (390k + 100k), battery ADC on GPIO1, control on GPIO21
-#define VBAT_ADC_CTL 37
-const int VBAT_ADC_PIN = 1;
-const float VOLTAGE_DIVIDER_RATIO = 4.9;  // (390k + 100k) / 100k
-
-// LiPo battery voltage thresholds
-const float BATTERY_MAX_VOLTAGE = 4.2;  // 100%
-const float BATTERY_MIN_VOLTAGE = 3.3;  // 0%
-
-float readBatteryVoltage() {
-  pinMode(VBAT_ADC_CTL, OUTPUT);
-  digitalWrite(VBAT_ADC_CTL, HIGH); // enable
-  delay(10);
-
-  // Dummy read then real read for accurate value
-  (void)analogReadMilliVolts(VBAT_ADC_PIN);
-  delay(2);
-  int analogVolts = analogReadMilliVolts(VBAT_ADC_PIN);
-
-  digitalWrite(VBAT_ADC_CTL, LOW);
-
-  float batteryVoltage = (analogVolts / 1000.0f) * VOLTAGE_DIVIDER_RATIO;
-  return batteryVoltage;
+RTC_DATA_ATTR uint8_t count = 0;
+void goToSleep() {
+  Serial.println("Going to deep sleep now");
+  // allows recall of the session after deepsleep
+  persist.saveSession(node);
+  // Calculate minimum duty cycle delay (per FUP & law!)
+  uint32_t interval = node->timeUntilUplink();
+  // And then pick it or our MINIMUM_DELAY, whichever is greater
+  uint32_t delayMs = max(interval, (uint32_t)MINIMUM_DELAY * 1000);
+  Serial.printf("Next TX in %i s\n", delayMs/1000);
+  delay(100);  // So message prints
+  // and off to bed we go
+  heltec_deep_sleep(delayMs/1000);
 }
+void setup() {
+  heltec_setup();
 
-float calculateBatteryPercentage(float voltage) {
-  if (voltage > BATTERY_MAX_VOLTAGE) voltage = BATTERY_MAX_VOLTAGE;
-  if (voltage < BATTERY_MIN_VOLTAGE) voltage = BATTERY_MIN_VOLTAGE;
+  // Obtain directly after deep sleep
+  // May or may not reflect room temperature, sort of.
+  float temp = heltec_temperature();
+  Serial.printf("Temperature: %.1f °C\n", temp);
 
-  float percentage = ((voltage - BATTERY_MIN_VOLTAGE) / (BATTERY_MAX_VOLTAGE - BATTERY_MIN_VOLTAGE)) * 100.0;
-
-  return percentage;
-}
-void setup()
-{
-  Serial.begin(115200);
-  delay(100);
-
-  esp_sleep_enable_timer_wakeup(sleepTime * uS_TO_S_FACTOR);
-  logMessage("Setup ESP32 to sleep for every " + String(sleepTime) + " Seconds");
-
-  InitPAX();
-#if ENABLE_DISPLAY
-  displayMcuInit();
-#endif
-#if ENABLE_LORA
-  InitLORA();
-#endif
-
-  analogReadResolution(12);
-  pinMode(VBAT_ADC_CTL, OUTPUT);
-  digitalWrite(VBAT_ADC_CTL, HIGH);
-  
-  firstrun = true;
-}
-
-void loop()
-{
-  float batteryPercentageLinear = 0;
-
-  if (deviceState == DEVICE_STATE_SEND) {
-    float batteryVoltage = readBatteryVoltage();
-    batteryPercentageLinear = calculateBatteryPercentage(batteryVoltage);
+  // initialize radio
+  Serial.println("Radio init");
+  int16_t state = radio.begin();
+  if (state != RADIOLIB_ERR_NONE) {
+    Serial.println("Radio did not initialize. We'll try again later.");
+    goToSleep();
   }
 
-#if ENABLE_LORA
-  if (current_count != 0)
-  {
-    LoopLORA(current_count, batteryPercentageLinear);
+  node = persist.manage(&radio);
+
+  if (!node->isActivated()) {
+    Serial.println("Could not join network. We'll try again later.");
+    goToSleep();
   }
-#endif
-  
-  firstrun = false;
+
+  // If we're still here, it means we joined, and we can send something
+
+  // Manages uplink intervals to the TTN Fair Use Policy
+  node->setDutyCycle(true, 1250);
+
+  uint8_t uplinkData[2];
+  uplinkData[0] = count++;
+  uplinkData[1] = temp + 100;
+
+  uint8_t downlinkData[256];
+  size_t lenDown = sizeof(downlinkData);
+
+  state = node->sendReceive(uplinkData, sizeof(uplinkData), 1, downlinkData, &lenDown);
+
+  if(state == RADIOLIB_ERR_NONE) {
+    Serial.println("Message sent, no downlink received.");
+  } else if (state > 0) {
+    Serial.println("Message sent, downlink received.");
+  } else {
+    Serial.printf("sendReceive returned error %d, we'll try again later.\n", state);
+  }
+
+  goToSleep();    // Does not return, program starts over next round
+
+}
+
+void loop() {
+  // This is never called. There is no repetition: we always go back to
+  // deep sleep one way or the other at the end of setup()
 }
