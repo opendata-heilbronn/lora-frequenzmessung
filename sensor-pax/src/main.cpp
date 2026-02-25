@@ -4,6 +4,7 @@
 #include "customs.h"
 #include "pax.h"
 #include "logging.h"
+#include "ota.h"
 
 LoRaWANNode* node;
 
@@ -17,6 +18,13 @@ void goToSleep() {
 
 void setup() {
     heltec_setup();
+
+    // ── 0. OTA check ─────────────────────────────────────────────
+    if (shouldEnterOtaMode()) {
+        logMessage("Entering WiFi OTA mode...");
+        performWifiOta();
+        // If we get here, OTA failed — continue normal operation
+    }
 
     // ── 1. BLE scan ──────────────────────────────────────────────
     paxSetup();
@@ -65,6 +73,13 @@ void setup() {
         logMessage("TX ok");
     } else {
         logMessageF("TX error %d", state);
+    }
+
+    // ── 7. Downlink: OTA trigger ──────────────────────────────────
+    if (downlinkLen > 0 && downlink[0] == 0x01) {
+        logMessage("OTA requested via downlink");
+        setOtaFlag();
+        // Flag is set; OTA will run on next wake
     }
 
     goToSleep();
