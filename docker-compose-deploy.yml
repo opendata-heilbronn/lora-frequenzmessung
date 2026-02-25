@@ -1,8 +1,15 @@
 services:
+  frontend:
+    image: ghcr.io/opendata-heilbronn/frontend:latest
+
+    depends_on:
+      - backend
+    restart: unless-stopped
+
   backend:
     build:
       context: .
-      dockerfile: docker/go/Aggregator/Dockerfile
+      dockerfile: docker/go/backend/Dockerfile
     environment:
       BROKEN_HOST: ${BROKEN_HOST}
       BROKEN_PORT: ${BROKEN_PORT}
