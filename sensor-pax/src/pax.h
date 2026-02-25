@@ -5,7 +5,7 @@
 #include "libpax_api.h"
 
 struct count_payload_t count_from_libpax;
-bool new_data_available = false;
+volatile bool new_data_available = false;
 int current_count = 0;
 
 
@@ -15,8 +15,7 @@ void log()
   current_count = count_from_libpax.pax;
 }
 
-// libpax initialization
-void InitPAX()
+void paxSetup()
 {
   struct libpax_config_t configuration;
   libpax_default_config(&configuration);
@@ -28,10 +27,11 @@ void InitPAX()
   configuration.ble_rssi_threshold = -80;
   libpax_update_config(&configuration);
 
-  // internal processing initialization
   libpax_counter_init(log, &count_from_libpax, 10, 1);
   libpax_counter_start();
 }
 
-void LoopPAX() {
+void paxStop()
+{
+  libpax_counter_stop();
 }
