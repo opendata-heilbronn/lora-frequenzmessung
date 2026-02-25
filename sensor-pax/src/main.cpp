@@ -1,82 +1,73 @@
-#define LoRaWAN_DEBUG_LEVEL 0
-#define uS_TO_S_FACTOR 1000000ULL
-
-#include <Arduino.h>
-#include "HT_lCMEN2R13EFC1.h"
-
-#include "logging.h"
-#include "lora.h"
+#include <Arduino.h>        // Must come first — pins_arduino.h must be processed before heltec_unofficial.h defines its pin macros
+#include <heltec_unofficial.h>
+#include <LoRaWAN_ESP32.h>
+#include "customs.h"
 #include "pax.h"
-#include "display.h"
+#include "logging.h"
 
-// --- Battery Configuration ---
-// Heltec V3 hardware: voltage divider (390k + 100k), battery ADC on GPIO1, control on GPIO21
-#define VBAT_ADC_CTL 37
-const int VBAT_ADC_PIN = 1;
-const float VOLTAGE_DIVIDER_RATIO = 4.9;  // (390k + 100k) / 100k
+LoRaWANNode* node;
 
-// LiPo battery voltage thresholds
-const float BATTERY_MAX_VOLTAGE = 4.2;  // 100%
-const float BATTERY_MIN_VOLTAGE = 3.3;  // 0%
-
-float readBatteryVoltage() {
-  pinMode(VBAT_ADC_CTL, OUTPUT);
-  digitalWrite(VBAT_ADC_CTL, HIGH); // enable
-  delay(10);
-
-  // Dummy read then real read for accurate value
-  (void)analogReadMilliVolts(VBAT_ADC_PIN);
-  delay(2);
-  int analogVolts = analogReadMilliVolts(VBAT_ADC_PIN);
-
-  digitalWrite(VBAT_ADC_CTL, LOW);
-
-  float batteryVoltage = (analogVolts / 1000.0f) * VOLTAGE_DIVIDER_RATIO;
-  return batteryVoltage;
+void goToSleep() {
+    if (node) persist.saveSession(node);
+    uint32_t interval = node ? node->timeUntilUplink() : 0;
+    uint32_t sleepSec = max(interval / 1000, (uint32_t)SLEEP_TIME_SEC);
+    logMessage("Sleeping for " + String(sleepSec) + "s");
+    heltec_deep_sleep(sleepSec);
 }
 
-float calculateBatteryPercentage(float voltage) {
-  if (voltage > BATTERY_MAX_VOLTAGE) voltage = BATTERY_MAX_VOLTAGE;
-  if (voltage < BATTERY_MIN_VOLTAGE) voltage = BATTERY_MIN_VOLTAGE;
+void setup() {
+    heltec_setup();
 
-  float percentage = ((voltage - BATTERY_MIN_VOLTAGE) / (BATTERY_MAX_VOLTAGE - BATTERY_MIN_VOLTAGE)) * 100.0;
+    // ── 1. BLE scan ──────────────────────────────────────────────
+    paxSetup();
+    unsigned long scanStart = millis();
+    while (!new_data_available && millis() - scanStart < 35000) {
+        delay(100);
+    }
+    uint16_t paxCount = current_count;
+    paxStop();
+    logMessageF("PAX count: %d", paxCount);
 
-  return percentage;
+    // ── 2. Battery ───────────────────────────────────────────────
+    float voltage = heltec_vbat();
+    float battPct = heltec_battery_percent(voltage);
+    logMessageF("Battery: %.2fV (%.1f%%)", voltage, battPct);
+
+    // ── 3. Radio init ────────────────────────────────────────────
+    if (radio.begin() != RADIOLIB_ERR_NONE) {
+        logMessage("Radio init failed");
+        goToSleep();
+    }
+
+    // ── 4. Provision + join ──────────────────────────────────────
+    if (!persist.isProvisioned()) {
+        persist.provision("EU868", 0, JOINEUI, DEVEUI,
+                          (uint8_t*)APPKEY, (uint8_t*)APPKEY);
+    }
+    node = persist.manage(&radio);
+    if (!node->isActivated()) {
+        logMessage("Join failed");
+        goToSleep();
+    }
+
+    // ── 5. Build payload ─────────────────────────────────────────
+    char payload[96];
+    snprintf(payload, sizeof(payload), "%s,0,%.4f,1,%.4f",
+             sensor_id, paxCount * factor, battPct);
+    logMessage("Payload: " + String(payload));
+
+    // ── 6. Send ──────────────────────────────────────────────────
+    uint8_t downlink[256];
+    size_t downlinkLen = sizeof(downlink);
+    int16_t state = node->sendReceive(
+        (uint8_t*)payload, strlen(payload), 2, downlink, &downlinkLen);
+    if (state >= 0) {
+        logMessage("TX ok");
+    } else {
+        logMessageF("TX error %d", state);
+    }
+
+    goToSleep();
 }
-void setup()
-{
-  Serial.begin(115200);
-  delay(100);
 
-  esp_sleep_enable_timer_wakeup(sleepTime * uS_TO_S_FACTOR);
-  logMessage("Setup ESP32 to sleep for every " + String(sleepTime) + " Seconds");
-
-  InitPAX();
-#if ENABLE_DISPLAY
-  displayMcuInit();
-#endif
-  InitLORA();
-
-  analogReadResolution(12);
-  pinMode(VBAT_ADC_CTL, OUTPUT);
-  digitalWrite(VBAT_ADC_CTL, HIGH);
-  
-  firstrun = true;
-}
-
-void loop()
-{
-  float batteryPercentageLinear = 0;
-
-  if (deviceState == DEVICE_STATE_SEND) {
-    float batteryVoltage = readBatteryVoltage();
-    batteryPercentageLinear = calculateBatteryPercentage(batteryVoltage);
-  }
-
-  if (current_count != 0)
-  {
-    LoopLORA(current_count, batteryPercentageLinear);
-  }
-  
-  firstrun = false;
-}
+void loop() {}
