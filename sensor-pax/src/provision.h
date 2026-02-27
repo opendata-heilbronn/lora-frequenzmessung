@@ -97,7 +97,8 @@ inline void waitForProvisioning() {
     bool    has_factor      = false;
     bool    has_sleep_sec   = false;
 
-    String line = "";
+    char line[128];
+    int linePos = 0;
     while (true) {
         if (!Serial.available()) {
             // Re-announce every 2s so scripts connecting after boot still see PROV_READY
@@ -111,18 +112,25 @@ inline void waitForProvisioning() {
         char c = Serial.read();
         if (c == '\r') continue;
         if (c != '\n') {
-            line += c;
+            if (linePos < (int)sizeof(line) - 1) {
+                line[linePos++] = c;
+            }
             continue;
         }
 
         // Process completed line
-        line.trim();
-        if (line.length() == 0) {
-            line = "";
-            continue;
-        }
+        line[linePos] = '\0';
+        linePos = 0;
 
-        if (line == "COMMIT") {
+        // Trim leading/trailing whitespace manually
+        char* trimmed = line;
+        while(isspace(*trimmed)) trimmed++;
+        char* end = trimmed + strlen(trimmed) - 1;
+        while(end > trimmed && isspace(*end)) *end-- = '\0';
+
+        if (strlen(trimmed) == 0) continue;
+
+        if (strcmp(trimmed, "COMMIT") == 0) {
             if (!has_sensor_id || !has_joineui || !has_deveui ||
                 !has_appkey || !has_factor || !has_sleep_sec) {
                 Serial.println("ERROR: missing keys before COMMIT");
@@ -148,65 +156,67 @@ inline void waitForProvisioning() {
                 delay(100);
                 ESP.restart();
             }
-            line = "";
             continue;
         }
 
-        int eqIdx = line.indexOf('=');
-        if (eqIdx < 1) {
+        char* eqPtr = strchr(trimmed, '=');
+        if (!eqPtr || eqPtr == trimmed) {
             Serial.println("ERROR: bad format, expected KEY=VALUE");
-            line = "";
             continue;
         }
 
-        String key = line.substring(0, eqIdx);
-        String val = line.substring(eqIdx + 1);
+        *eqPtr = '\0';
+        char* key = trimmed;
+        char* val = eqPtr + 1;
 
-        if (key == "sensor_id") {
-            if (val.length() == 0 || val.length() >= sizeof(v_sensor_id)) {
+        if (strcmp(key, "sensor_id") == 0) {
+            size_t valLen = strlen(val);
+            if (valLen == 0 || valLen >= sizeof(v_sensor_id)) {
                 Serial.println("ERROR: sensor_id must be 1–15 chars");
             } else {
-                strncpy(v_sensor_id, val.c_str(), sizeof(v_sensor_id) - 1);
+                strncpy(v_sensor_id, val, sizeof(v_sensor_id) - 1);
+                v_sensor_id[sizeof(v_sensor_id)-1] = '\0';
                 has_sensor_id = true;
                 Serial.println("OK");
             }
-        } else if (key == "factor") {
-            v_factor   = val.toFloat();
+        } else if (strcmp(key, "factor") == 0) {
+            v_factor   = atof(val);
             has_factor = true;
             Serial.println("OK");
-        } else if (key == "sleep_sec") {
-            v_sleep_sec   = val.toInt();
+        } else if (strcmp(key, "sleep_sec") == 0) {
+            v_sleep_sec   = atol(val);
             has_sleep_sec = true;
             Serial.println("OK");
-        } else if (key == "joineui") {
-            if (val.length() != 16) {
+        } else if (strcmp(key, "joineui") == 0) {
+            if (strlen(val) != 16) {
                 Serial.println("ERROR: joineui must be 16 hex chars");
             } else {
-                strncpy(v_joineui, val.c_str(), sizeof(v_joineui) - 1);
+                strncpy(v_joineui, val, sizeof(v_joineui) - 1);
+                v_joineui[sizeof(v_joineui)-1] = '\0';
                 has_joineui = true;
                 Serial.println("OK");
             }
-        } else if (key == "deveui") {
-            if (val.length() != 16) {
+        } else if (strcmp(key, "deveui") == 0) {
+            if (strlen(val) != 16) {
                 Serial.println("ERROR: deveui must be 16 hex chars");
             } else {
-                strncpy(v_deveui, val.c_str(), sizeof(v_deveui) - 1);
+                strncpy(v_deveui, val, sizeof(v_deveui) - 1);
+                v_deveui[sizeof(v_deveui)-1] = '\0';
                 has_deveui = true;
                 Serial.println("OK");
             }
-        } else if (key == "appkey") {
-            if (val.length() != 32) {
+        } else if (strcmp(key, "appkey") == 0) {
+            if (strlen(val) != 32) {
                 Serial.println("ERROR: appkey must be 32 hex chars");
             } else {
-                strncpy(v_appkey, val.c_str(), sizeof(v_appkey) - 1);
+                strncpy(v_appkey, val, sizeof(v_appkey) - 1);
+                v_appkey[sizeof(v_appkey)-1] = '\0';
                 has_appkey = true;
                 Serial.println("OK");
             }
         } else {
             Serial.println("ERROR: unknown key");
         }
-
-        line = "";
     }
 }
 
