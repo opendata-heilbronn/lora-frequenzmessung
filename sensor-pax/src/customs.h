@@ -22,4 +22,5 @@ const char OTA_WIFI_PASS[] = "changeme";
 const char OTA_FIRMWARE_URL[] = "http://192.168.4.1/firmware.bin";
 const int  OTA_TIMEOUT_SEC = 60;
 
+
 #endif // CUSTOMS_H
