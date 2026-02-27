@@ -1,5 +1,9 @@
 # CLAUDE.md
-
+# key rules: 
+* for each feature we build we builed in the frontent we build at least one playwrite test, at best for each function one, to ensure we dont break features in the future.
+* after adding a new feature run playwrite tests to ensure we did not break somthing
+* for each code we write we add tests 
+* 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Build & Test Commands

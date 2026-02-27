@@ -56,28 +56,12 @@ func newMockTTNServer(calls *[]ttnCall, mu *sync.Mutex, failPath string) *httpte
 func setTTNEnv(baseURL string) func() {
 	oldAppID := os.Getenv("TTN_APP_ID")
 	oldAPIKey := os.Getenv("TTN_API_KEY")
-	// Monkey-patch getTTNConfig by setting env vars; the baseURL is injected
-	// via a test helper that overrides the function.
 	os.Setenv("TTN_APP_ID", "test-app")
 	os.Setenv("TTN_API_KEY", "test-key")
 	return func() {
 		os.Setenv("TTN_APP_ID", oldAppID)
 		os.Setenv("TTN_API_KEY", oldAPIKey)
 	}
-}
-
-// registerWithMockServer calls registerTTNDevice against a mock TTN server.
-// It temporarily replaces the base URL by overriding getTTNConfig.
-func registerWithMockServer(t *testing.T, calls *[]ttnCall, mu *sync.Mutex, failPath string) (*httptest.Server, error) {
-	t.Helper()
-	srv := newMockTTNServer(calls, mu, failPath)
-
-	// We can't easily swap getTTNConfig, so we call ttnRequest directly
-	// through the exported registerTTNDevice. Instead, we use a local wrapper.
-	// For now, we test the lower-level ttnRequest function and build the
-	// full registration flow ourselves using the same logic as registerTTNDevice.
-
-	return srv, nil
 }
 
 func TestTTNRegistration_AllFourSteps(t *testing.T) {
@@ -292,9 +276,6 @@ func TestTTNDeletion_ReverseOrder(t *testing.T) {
 	cleanup := setTTNEnv(srv.URL)
 	defer cleanup()
 
-	// We need to test deleteTTNDevice but it uses getTTNConfig() which
-	// returns the hardcoded eu1.cloud.thethings.network URL.
-	// So we test the delete logic directly using ttnRequest.
 	client := &http.Client{}
 	baseURL := srv.URL
 	appID := "test-app"

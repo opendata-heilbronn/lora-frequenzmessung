@@ -2,6 +2,8 @@ package Misc
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/caarlos0/env/v11"
 )
 
@@ -42,6 +44,10 @@ func GetDBDsn() string {
 		panic(err)
 	}
 	return cfg.DBdsn
+}
+
+func GetInternalAPIKey() string {
+	return os.Getenv("INTERNAL_API_KEY")
 }
 
 func SetupVars() (string, string, string, string, string, string) {

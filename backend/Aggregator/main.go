@@ -41,7 +41,8 @@ func loadSensors() ([]structs2.Clients, error) {
 	backendURL := Misc2.GetBackendURL()
 	resp, err := resty.New().R().
 		SetHeader("Accept", "application/json").
-		Get(fmt.Sprintf("%s/api/sensors", backendURL))
+		SetHeader("X-Internal-Key", Misc2.GetInternalAPIKey()).
+		Get(fmt.Sprintf("%s/internal/sensors", backendURL))
 	if err != nil {
 		return nil, fmt.Errorf("fetch sensors from backend: %w", err)
 	}
@@ -141,7 +142,10 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 		DataWithClient.Data = densityData
 		encodedData, _ := json.Marshal(DataWithClient)
 		fmt.Println(string(encodedData))
-		_, err = restyClient.R().SetBody(encodedData).Post(fmt.Sprintf("%s/add-sensor-data", Misc2.GetBackendURL()))
+		_, err = restyClient.R().
+			SetHeader("X-Internal-Key", Misc2.GetInternalAPIKey()).
+			SetBody(encodedData).
+			Post(fmt.Sprintf("%s/internal/sensor-data", Misc2.GetBackendURL()))
 		if err != nil {
 			fmt.Println("cant send data to Backend due to: ")
 			fmt.Println(err)

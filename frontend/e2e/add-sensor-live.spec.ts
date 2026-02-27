@@ -1,12 +1,44 @@
 import { test, expect } from '@playwright/test'
 
 // These tests hit the real backend — no mocked API responses.
-// Requires: backend running on :3001, frontend dev server on :5173.
+// Requires: ManagementAPI running on :3002, backend on :3001, frontend dev server on :5173.
 // Firmware builds take 30–60s, so we use generous timeouts.
+
+let authToken = ''
 
 test.describe('AddSensor live integration', () => {
   test.describe.configure({ mode: 'serial' })
   test.setTimeout(120_000)
+
+  test.beforeAll(async ({ request }) => {
+    const resp = await request.post('/auth/login', {
+      data: { username: 'admin', password: 'admin' },
+    })
+    expect(resp.ok()).toBeTruthy()
+    authToken = (await resp.json()).token
+
+    // Clean up any leftover sensors from previous failed runs
+    const listResp = await request.get('/api/sensors', {
+      headers: { Authorization: `Bearer ${authToken}` },
+    })
+    if (listResp.ok()) {
+      const sensors: { uuid: string; name: string }[] = await listResp.json()
+      for (const s of sensors) {
+        if (s.name.startsWith('live-test-')) {
+          await request.delete(`/api/sensors/${s.uuid}`, {
+            headers: { Authorization: `Bearer ${authToken}` },
+          })
+        }
+      }
+    }
+  })
+
+  test.beforeEach(async ({ page }) => {
+    // Inject the JWT before the app scripts run so the router guard passes
+    await page.addInitScript((token: string) => {
+      window.localStorage.setItem('token', token)
+    }, authToken)
+  })
 
   test('skip TTN: create → build without LoRa → flash → delete', async ({ page }) => {
     await page.goto('/add')
@@ -63,14 +95,12 @@ test.describe('AddSensor live integration', () => {
     // Step 3: TTN registration — wait for it to complete
     await expect(page.getByText('Device registered with TTN')).toBeVisible({ timeout: 30_000 })
 
-    // Verify DevEUI and AppKey are shown
+    // Verify DevEUI and AppKey are shown (displayed masked: XXXX****XXXX)
     const devEUI = await page.locator('.info-row').filter({ hasText: 'DevEUI' }).locator('code').textContent()
-    expect(devEUI).toBeTruthy()
-    expect(devEUI!.length).toBe(16) // 8 bytes hex
+    expect(devEUI).toMatch(/^[0-9A-F]{4}\*{4}[0-9A-F]{4}$/) // 8-byte hex, masked
 
     const appKey = await page.locator('.info-row').filter({ hasText: 'AppKey' }).locator('code').textContent()
-    expect(appKey).toBeTruthy()
-    expect(appKey!.length).toBe(32) // 16 bytes hex
+    expect(appKey).toMatch(/^[0-9A-F]{4}\*{4}[0-9A-F]{4}$/) // 16-byte hex, masked
 
     // Build firmware
     await page.getByRole('button', { name: /Build Firmware/ }).click()
@@ -93,7 +123,7 @@ test.describe('AddSensor live integration', () => {
     // Verify TTN badge shows "Linked"
     await expect(
       page.locator('tr', { hasText: 'live-test-with-ttn' }).locator('.badge-linked')
-    ).toHaveText('Linked')
+    ).toContainText('Linked')
 
     let dialogMessage = ''
     page.on('dialog', async (dialog) => {

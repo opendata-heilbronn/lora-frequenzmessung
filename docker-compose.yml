@@ -34,36 +34,6 @@ services:
       MQTT_PASSWORD: ${MQTT_PASSWORD}
     ports:
       - "5001:5000"
-  frontend:
-    build: ./frontend
-    restart: unless-stopped
-    ports:
-      - "8080:80"
-    depends_on:
-      - backend
-  backend:
-    build:
-      context: ./backend
-      dockerfile: docker/go/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "3001:3001"
-    environment:
-      DB_DSN: postgres://timescaledb:${POSTGRES_PASSWORD:-password}@timescaledb:5432/postgres?sslmode=disable
-      TTN_APP_ID: ${TTN_APP_ID}
-      TTN_API_KEY: ${TTN_API_KEY}
-      SENSOR_PAX_PATH: /sensor-pax
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:8080}
-    volumes:
-      - ./sensor-pax:/sensor-pax:ro
-    depends_on:
-      - timescaledb
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/api/sensors"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
 volumes:
   grafana-storage: {}
   db-storage: {}

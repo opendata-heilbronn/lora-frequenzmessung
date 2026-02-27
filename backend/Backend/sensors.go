@@ -4,8 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
-	"log"
 	"math"
 	"time"
 
@@ -34,6 +32,12 @@ type CreateSensorRequest struct {
 	Name      string  `json:"name"`
 	Longitude float64 `json:"longitude"`
 	Latitude  float64 `json:"latitude"`
+}
+
+type UpdateSensorTTNRequest struct {
+	DevEUI      string `json:"dev_eui"`
+	AppKey      string `json:"app_key"`
+	TtnDeviceID string `json:"ttn_device_id"`
 }
 
 func getSensors(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
@@ -80,6 +84,31 @@ func getSensors(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
 	}
 }
 
+func getSensor(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		uuid, err := validateUUID(c)
+		if err != nil {
+			return err
+		}
+
+		var s Sensor
+		err = pool.QueryRow(ctx, `
+			SELECT id, uuid, name, longitude, latitude, type,
+			       COALESCE(dev_eui,''), COALESCE(app_key,''),
+			       COALESCE(ttn_device_id,''), created_at
+			FROM sensors WHERE uuid = $1`, uuid).
+			Scan(&s.ID, &s.UUID, &s.Name, &s.Longitude, &s.Latitude,
+				&s.Type, &s.DevEUI, &s.AppKey, &s.TtnDeviceID, &s.CreatedAt)
+		if err == pgx.ErrNoRows {
+			return c.Status(404).JSON(fiber.Map{"error": "sensor not found"})
+		}
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+		return c.JSON(s)
+	}
+}
+
 func createSensor(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		var req CreateSensorRequest
@@ -119,62 +148,6 @@ func createSensor(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
 	}
 }
 
-func registerTTN(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
-	return func(c fiber.Ctx) error {
-		uuid, err := validateUUID(c)
-		if err != nil {
-			return err
-		}
-
-		var devEUI string
-		err = pool.QueryRow(ctx,
-			`SELECT COALESCE(dev_eui,'') FROM sensors WHERE uuid = $1`, uuid).
-			Scan(&devEUI)
-		if err == pgx.ErrNoRows {
-			return c.Status(404).JSON(fiber.Map{"error": "sensor not found"})
-		}
-		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-		}
-		if devEUI != "" {
-			return c.Status(409).JSON(fiber.Map{"error": "sensor already linked to TTN"})
-		}
-
-		// Generate devEUI (8 bytes → 16-char uppercase hex)
-		devEuiBytes := make([]byte, 8)
-		rand.Read(devEuiBytes)
-		newDevEUI := fmt.Sprintf("%X", devEuiBytes)
-
-		// Generate appKey (16 bytes → 32-char uppercase hex)
-		appKeyBytes := make([]byte, 16)
-		rand.Read(appKeyBytes)
-		appKey := fmt.Sprintf("%X", appKeyBytes)
-
-		ttnDeviceID := fmt.Sprintf("sensor-%s", uuid)
-
-		// Register in TTN — if it fails, don't save partial credentials
-		if err := registerTTNDevice(ttnDeviceID, newDevEUI, appKey); err != nil {
-			return c.Status(502).JSON(fiber.Map{"error": fmt.Sprintf("TTN registration failed: %v", err)})
-		}
-
-		tag, err := pool.Exec(ctx,
-			`UPDATE sensors SET dev_eui = $1, app_key = $2, ttn_device_id = $3 WHERE uuid = $4`,
-			newDevEUI, appKey, ttnDeviceID, uuid)
-		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-		}
-		if tag.RowsAffected() == 0 {
-			return c.Status(404).JSON(fiber.Map{"error": "sensor not found"})
-		}
-
-		return c.JSON(fiber.Map{
-			"dev_eui":       newDevEUI,
-			"app_key":       appKey,
-			"ttn_device_id": ttnDeviceID,
-		})
-	}
-}
-
 func deleteSensor(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		uuid, err := validateUUID(c)
@@ -182,22 +155,15 @@ func deleteSensor(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
 			return err
 		}
 
-		var ttnDeviceID string
+		var exists bool
 		err = pool.QueryRow(ctx,
-			`SELECT COALESCE(ttn_device_id,'') FROM sensors WHERE uuid = $1`, uuid).
-			Scan(&ttnDeviceID)
-		if err == pgx.ErrNoRows {
-			return c.Status(404).JSON(fiber.Map{"error": "sensor not found"})
-		}
+			`SELECT EXISTS(SELECT 1 FROM sensors WHERE uuid = $1)`, uuid).
+			Scan(&exists)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 		}
-
-		// Delete from TTN (best effort, log errors)
-		if ttnDeviceID != "" {
-			if ttnErr := deleteTTNDevice(ttnDeviceID); ttnErr != nil {
-				log.Printf("WARN: failed to delete TTN device %s: %v", ttnDeviceID, ttnErr)
-			}
+		if !exists {
+			return c.Status(404).JSON(fiber.Map{"error": "sensor not found"})
 		}
 
 		_, err = pool.Exec(ctx, `DELETE FROM sensors WHERE uuid = $1`, uuid)
@@ -206,5 +172,35 @@ func deleteSensor(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
 		}
 
 		return c.Status(204).SendString("")
+	}
+}
+
+func updateSensorTTN(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		uuid, err := validateUUID(c)
+		if err != nil {
+			return err
+		}
+
+		var req UpdateSensorTTNRequest
+		if err := c.Bind().JSON(&req); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		}
+
+		tag, err := pool.Exec(ctx,
+			`UPDATE sensors SET dev_eui = $1, app_key = $2, ttn_device_id = $3 WHERE uuid = $4`,
+			req.DevEUI, req.AppKey, req.TtnDeviceID, uuid)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+		if tag.RowsAffected() == 0 {
+			return c.Status(404).JSON(fiber.Map{"error": "sensor not found"})
+		}
+
+		return c.JSON(fiber.Map{
+			"dev_eui":       req.DevEUI,
+			"app_key":       req.AppKey,
+			"ttn_device_id": req.TtnDeviceID,
+		})
 	}
 }

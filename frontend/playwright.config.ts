@@ -12,7 +12,10 @@ export default defineConfig({
   projects: [
     {
       name: 'unit',
-      use: { browserName: 'chromium' },
+      use: {
+        browserName: 'chromium',
+        storageState: 'e2e/auth.storage.json',
+      },
       testIgnore: /.*-live\.spec\.ts/,
     },
     {

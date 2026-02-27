@@ -25,6 +25,36 @@ Run migration
 migrate -database "postgres://timescaledb:password@localhost:5432/postgres?sslmode=disable"  -path db/migrations up
 ```
 
+# Backend
+The backend is a Go/Fiber v3 API server, located in `backend/`.
+
+Install dependencies:
+```
+cd backend
+go mod download
+```
+
+Start the API server (runs on http://localhost:3001):
+```
+go run ./Backend
+```
+
+Or build and run:
+```
+go build -o /tmp/backend-bin ./Backend
+/tmp/backend-bin
+```
+
+Start the MQTT aggregator:
+```
+go run ./Aggregator
+```
+
+Run tests:
+```
+go test ./...
+```
+
 # Frontend
 The frontend is a Vue 3 app built with Vite, located in `frontend/`.
 

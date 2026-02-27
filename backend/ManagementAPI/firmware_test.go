@@ -1,11 +1,23 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/gofiber/fiber/v3"
 )
+
+// setupMgmtTestApp creates a Fiber app with firmware routes for testing.
+func setupMgmtTestApp() *fiber.App {
+	app := fiber.New()
+	app.Get("/api/sensors/:uuid/build-status", getBuildStatusHandler)
+	app.Get("/api/sensors/:uuid/firmware.bin", getFirmwareBinHandler)
+	return app
+}
 
 // TestGenerateCustomsH_WithoutLoRa verifies that customs.h disables LoRa
 // when no TTN credentials are provided.
@@ -41,7 +53,6 @@ func TestGenerateCustomsH_WithLoRa(t *testing.T) {
 
 // TestBuildPreparation_WithoutLoRa verifies that the build directory is set up
 // correctly: source is copied and customs.h is written with LoRa disabled.
-// This tests everything in runPlatformioBuild before the platformio invocation.
 func TestBuildPreparation_WithoutLoRa(t *testing.T) {
 	// Create a fake sensor-pax source tree
 	fakeSrc := t.TempDir()
@@ -52,19 +63,14 @@ func TestBuildPreparation_WithoutLoRa(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(srcDir, "main.cpp"), []byte("// main"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	// Also add a platformio.ini so the copy is realistic
 	if err := os.WriteFile(filepath.Join(fakeSrc, "platformio.ini"), []byte("[env]"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	// Point SENSOR_PAX_PATH to our fake source
 	t.Setenv("SENSOR_PAX_PATH", fakeSrc)
 
-	// Run the build — it will fail at the platformio step, which is expected
 	_, err := runPlatformioBuild("test-uuid-no-lora", "", "", false)
 
-	// We expect a platformio error (not installed or not a real project),
-	// but NOT a "copy source" or "write customs.h" error
 	if err == nil {
 		t.Fatal("expected platformio build to fail in test environment")
 	}
@@ -78,10 +84,8 @@ func TestBuildPreparation_WithoutLoRa(t *testing.T) {
 		t.Fatalf("path resolution should not fail: %v", err)
 	}
 
-	// Verify the build directory was created with correct contents
 	buildDir := filepath.Join(os.TempDir(), "pax-build-test-uuid-no-lora")
 
-	// customs.h should exist and have ENABLE_LORA 0
 	customsPath := filepath.Join(buildDir, "src", "customs.h")
 	customsBytes, err := os.ReadFile(customsPath)
 	if err != nil {
@@ -95,7 +99,6 @@ func TestBuildPreparation_WithoutLoRa(t *testing.T) {
 		t.Fatal("customs.h should contain the sensor UUID")
 	}
 
-	// main.cpp should have been copied
 	mainCpp, err := os.ReadFile(filepath.Join(buildDir, "src", "main.cpp"))
 	if err != nil {
 		t.Fatalf("main.cpp should be copied to build dir: %v", err)
@@ -104,19 +107,16 @@ func TestBuildPreparation_WithoutLoRa(t *testing.T) {
 		t.Fatal("main.cpp content should match source")
 	}
 
-	// platformio.ini should be present
 	if _, err := os.Stat(filepath.Join(buildDir, "platformio.ini")); err != nil {
 		t.Fatal("platformio.ini should be copied to build dir")
 	}
 
-	// Cleanup
 	os.RemoveAll(buildDir)
 }
 
 // TestBuildPreparation_RelativePath verifies that a relative SENSOR_PAX_PATH
-// is resolved correctly (the fix for the ./sensor-pax lstat error).
+// is resolved correctly.
 func TestBuildPreparation_RelativePath(t *testing.T) {
-	// Create a fake sensor-pax in a subdirectory
 	baseDir := t.TempDir()
 	fakeSrc := filepath.Join(baseDir, "sensor-pax")
 	srcDir := filepath.Join(fakeSrc, "src")
@@ -127,7 +127,6 @@ func TestBuildPreparation_RelativePath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Change to baseDir so "./sensor-pax" resolves correctly
 	origDir, _ := os.Getwd()
 	if err := os.Chdir(baseDir); err != nil {
 		t.Fatal(err)
@@ -138,7 +137,6 @@ func TestBuildPreparation_RelativePath(t *testing.T) {
 
 	_, err := runPlatformioBuild("test-uuid-relpath", "", "", false)
 
-	// Should fail at platformio, NOT at source copy
 	if err != nil && strings.Contains(err.Error(), "copy source") {
 		t.Fatalf("relative path should resolve correctly: %v", err)
 	}
@@ -152,10 +150,8 @@ func TestBuildPreparation_RelativePath(t *testing.T) {
 }
 
 // TestBuildPreparation_ParentFallback verifies that when ./sensor-pax doesn't
-// exist in CWD, the build falls back to ../sensor-pax (the real-world scenario
-// where the backend runs from backend/ but sensor-pax is at the project root).
+// exist in CWD, the build falls back to ../sensor-pax.
 func TestBuildPreparation_ParentFallback(t *testing.T) {
-	// Create project-root/sensor-pax/src/
 	projectRoot := t.TempDir()
 	fakeSrc := filepath.Join(projectRoot, "sensor-pax", "src")
 	if err := os.MkdirAll(fakeSrc, 0755); err != nil {
@@ -165,13 +161,11 @@ func TestBuildPreparation_ParentFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create project-root/backend/ (simulate backend CWD — no sensor-pax here)
 	backendDir := filepath.Join(projectRoot, "backend")
 	if err := os.MkdirAll(backendDir, 0755); err != nil {
 		t.Fatal(err)
 	}
 
-	// Change to backend/ so ./sensor-pax doesn't exist, but ../sensor-pax does
 	origDir, _ := os.Getwd()
 	if err := os.Chdir(backendDir); err != nil {
 		t.Fatal(err)
@@ -182,7 +176,6 @@ func TestBuildPreparation_ParentFallback(t *testing.T) {
 
 	_, err := runPlatformioBuild("test-uuid-fallback", "", "", false)
 
-	// Must NOT fail with "copy source" — the parent fallback should kick in
 	if err != nil && strings.Contains(err.Error(), "copy source") {
 		t.Fatalf("parent directory fallback should find sensor-pax: %v", err)
 	}
@@ -190,7 +183,6 @@ func TestBuildPreparation_ParentFallback(t *testing.T) {
 	buildDir := filepath.Join(os.TempDir(), "pax-build-test-uuid-fallback")
 	t.Cleanup(func() { os.RemoveAll(buildDir) })
 
-	// Verify customs.h was written
 	customs, err := os.ReadFile(filepath.Join(buildDir, "src", "customs.h"))
 	if err != nil {
 		t.Fatalf("customs.h should exist after parent fallback: %v", err)
@@ -199,12 +191,39 @@ func TestBuildPreparation_ParentFallback(t *testing.T) {
 		t.Fatal("customs.h should have ENABLE_LORA 0")
 	}
 
-	// Verify source was copied from the parent's sensor-pax
 	mainCpp, err := os.ReadFile(filepath.Join(buildDir, "src", "main.cpp"))
 	if err != nil {
 		t.Fatalf("main.cpp should be copied: %v", err)
 	}
 	if string(mainCpp) != "// fallback" {
 		t.Fatal("main.cpp should come from ../sensor-pax, not ./sensor-pax")
+	}
+}
+
+func TestGetBuildStatus_NotStarted(t *testing.T) {
+	app := setupMgmtTestApp()
+	buildStatuses.Delete("abcd1234")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sensors/abcd1234/build-status", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	if resp.StatusCode != 404 {
+		t.Errorf("expected 404, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetFirmwareBin_NotBuilt(t *testing.T) {
+	app := setupMgmtTestApp()
+	buildStatuses.Delete("abcd1234")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sensors/abcd1234/firmware.bin", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	if resp.StatusCode != 404 {
+		t.Errorf("expected 404, got %d", resp.StatusCode)
 	}
 }

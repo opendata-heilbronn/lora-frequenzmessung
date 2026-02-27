@@ -8,12 +8,10 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Misc"
 	structs2 "github.com/opendata-heilbronn/lora-frequenzmessung/structs"
@@ -46,26 +44,17 @@ func main() {
 	}
 	defer pool.Close()
 
-	// CORS — read allowed origins from env, with sensible defaults
-	allowedOrigins := os.Getenv("CORS_ORIGINS")
-	if allowedOrigins == "" {
-		allowedOrigins = "http://localhost:5173,http://localhost:8080"
-	}
-	app.Use(cors.New(cors.Config{
-		AllowOrigins: strings.Split(allowedOrigins, ","),
-		AllowMethods: []string{"GET", "POST", "DELETE", "OPTIONS"},
-		AllowHeaders: []string{"Content-Type", "Authorization"},
-	}))
-
-	// Security headers
+	// X-Internal-Key authentication — this service is internal-only
+	internalKey := Misc.GetInternalAPIKey()
 	app.Use(func(c fiber.Ctx) error {
-		c.Set("X-Content-Type-Options", "nosniff")
-		c.Set("X-Frame-Options", "DENY")
+		if c.Get("X-Internal-Key") != internalKey {
+			return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
+		}
 		return c.Next()
 	})
 
-	// Existing route
-	app.Post("/add-sensor-data", func(c fiber.Ctx) error {
+	// Data ingestion
+	app.Post("/internal/sensor-data", func(c fiber.Ctx) error {
 		p := new(structs2.DensityDataWithClient)
 		err := c.AutoFormat(p)
 		if err != nil {
@@ -93,16 +82,11 @@ func main() {
 	})
 
 	// Sensor CRUD
-	app.Get("/api/sensors", getSensors(pool, ctx))
-	app.Post("/api/sensors", createSensor(pool, ctx))
-	app.Delete("/api/sensors/:uuid", deleteSensor(pool, ctx))
-	app.Post("/api/sensors/:uuid/register-ttn", registerTTN(pool, ctx))
-
-	// Firmware build & serving
-	app.Post("/api/sensors/:uuid/build-firmware", buildFirmware(pool, ctx))
-	app.Get("/api/sensors/:uuid/build-status", getBuildStatus())
-	app.Get("/api/sensors/:uuid/manifest.json", getFirmwareManifest(pool, ctx))
-	app.Get("/api/sensors/:uuid/firmware.bin", getFirmwareBin())
+	app.Get("/internal/sensors", getSensors(pool, ctx))
+	app.Post("/internal/sensors", createSensor(pool, ctx))
+	app.Get("/internal/sensors/:uuid", getSensor(pool, ctx))
+	app.Delete("/internal/sensors/:uuid", deleteSensor(pool, ctx))
+	app.Put("/internal/sensors/:uuid/ttn", updateSensorTTN(pool, ctx))
 
 	// Graceful shutdown
 	go func() {

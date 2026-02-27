@@ -14,8 +14,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type buildState struct {
@@ -32,143 +30,155 @@ var buildSemaphore = make(chan struct{}, 2)
 
 const buildTimeout = 5 * time.Minute
 
-func buildFirmware(pool *pgxpool.Pool, dbCtx context.Context) fiber.Handler {
-	return func(c fiber.Ctx) error {
-		uuid, err := validateUUID(c)
-		if err != nil {
-			return err
-		}
-
-		var devEUI, appKey string
-		err = pool.QueryRow(dbCtx,
-			`SELECT COALESCE(dev_eui,''), COALESCE(app_key,'') FROM sensors WHERE uuid = $1`, uuid).
-			Scan(&devEUI, &appKey)
-		if err == pgx.ErrNoRows {
-			return c.Status(404).JSON(fiber.Map{"error": "sensor not found"})
-		}
-		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-		}
-
-		// Check if already building
-		if st, ok := buildStatuses.Load(uuid); ok {
-			bs := st.(*buildState)
-			bs.mu.Lock()
-			status := bs.Status
-			bs.mu.Unlock()
-			if status == "building" {
-				return c.Status(202).JSON(fiber.Map{"status": "already building"})
-			}
-		}
-
-		state := &buildState{Status: "building"}
-		buildStatuses.Store(uuid, state)
-
-		hasTTN := devEUI != ""
-
-		go func() {
-			// Acquire build semaphore
-			buildSemaphore <- struct{}{}
-			defer func() { <-buildSemaphore }()
-
-			binPath, err := runPlatformioBuild(uuid, devEUI, appKey, hasTTN)
-			state.mu.Lock()
-			defer state.mu.Unlock()
-			if err != nil {
-				state.Status = "error"
-				state.Message = err.Error()
-				return
-			}
-			state.Status = "done"
-			state.BinPath = binPath
-		}()
-
-		return c.Status(202).JSON(fiber.Map{"status": "building"})
+func buildFirmwareHandler(c fiber.Ctx) error {
+	uuid := c.Params("uuid")
+	if !uuidRegex.MatchString(uuid) {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid sensor UUID"})
 	}
-}
 
-func getBuildStatus() fiber.Handler {
-	return func(c fiber.Ctx) error {
-		uuid, err := validateUUID(c)
-		if err != nil {
-			return err
-		}
-		st, ok := buildStatuses.Load(uuid)
-		if !ok {
-			return c.Status(404).JSON(fiber.Map{"status": "not_started"})
-		}
-		bs := st.(*buildState)
-		bs.mu.Lock()
-		defer bs.mu.Unlock()
-		return c.JSON(fiber.Map{
-			"status":  bs.Status,
-			"message": bs.Message,
-		})
+	// Fetch sensor from backend to get TTN credentials
+	resp, err := internalRequest("GET", "/internal/sensors/"+uuid, nil)
+	if err != nil {
+		return c.Status(502).JSON(fiber.Map{"error": "backend unreachable"})
 	}
-}
+	defer resp.Body.Close()
 
-func getFirmwareManifest(pool *pgxpool.Pool, dbCtx context.Context) fiber.Handler {
-	return func(c fiber.Ctx) error {
-		uuid, err := validateUUID(c)
-		if err != nil {
-			return err
-		}
-
-		var name string
-		err = pool.QueryRow(dbCtx, `SELECT name FROM sensors WHERE uuid = $1`, uuid).Scan(&name)
-		if err == pgx.ErrNoRows {
-			return c.Status(404).JSON(fiber.Map{"error": "sensor not found"})
-		}
-		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-		}
-
-		manifest := map[string]any{
-			"name":    name,
-			"version": "1.0.0",
-			"builds": []map[string]any{
-				{
-					"chipFamily": "ESP32-S3",
-					"parts": []map[string]any{
-						{"path": fmt.Sprintf("/api/sensors/%s/firmware.bin", uuid), "offset": 65536},
-					},
-				},
-			},
-		}
-
-		c.Set("Content-Type", "application/json")
-		return c.JSON(manifest)
+	if resp.StatusCode == 404 {
+		return c.Status(404).JSON(fiber.Map{"error": "sensor not found"})
 	}
-}
+	if resp.StatusCode != 200 {
+		return c.Status(resp.StatusCode).JSON(fiber.Map{"error": "backend error"})
+	}
 
-func getFirmwareBin() fiber.Handler {
-	return func(c fiber.Ctx) error {
-		uuid, err := validateUUID(c)
-		if err != nil {
-			return err
-		}
+	body, _ := io.ReadAll(resp.Body)
+	var sensor map[string]any
+	json.Unmarshal(body, &sensor)
 
-		st, ok := buildStatuses.Load(uuid)
-		if !ok {
-			return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
-		}
+	devEUI, _ := sensor["dev_eui"].(string)
+	appKey, _ := sensor["app_key"].(string)
+
+	// Check if already building
+	if st, ok := buildStatuses.Load(uuid); ok {
 		bs := st.(*buildState)
 		bs.mu.Lock()
 		status := bs.Status
-		binPath := bs.BinPath
 		bs.mu.Unlock()
-
-		if status != "done" {
-			return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
+		if status == "building" {
+			return c.Status(202).JSON(fiber.Map{"status": "already building"})
 		}
-
-		if _, err := os.Stat(binPath); os.IsNotExist(err) {
-			return c.Status(404).JSON(fiber.Map{"error": "firmware binary not found"})
-		}
-
-		c.Set("Content-Type", "application/octet-stream")
-		return c.SendFile(binPath)
 	}
+
+	state := &buildState{Status: "building"}
+	buildStatuses.Store(uuid, state)
+
+	hasTTN := devEUI != ""
+
+	go func() {
+		// Acquire build semaphore
+		buildSemaphore <- struct{}{}
+		defer func() { <-buildSemaphore }()
+
+		binPath, err := runPlatformioBuild(uuid, devEUI, appKey, hasTTN)
+		state.mu.Lock()
+		defer state.mu.Unlock()
+		if err != nil {
+			state.Status = "error"
+			state.Message = err.Error()
+			return
+		}
+		state.Status = "done"
+		state.BinPath = binPath
+	}()
+
+	return c.Status(202).JSON(fiber.Map{"status": "building"})
+}
+
+func getBuildStatusHandler(c fiber.Ctx) error {
+	uuid := c.Params("uuid")
+	if !uuidRegex.MatchString(uuid) {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid sensor UUID"})
+	}
+	st, ok := buildStatuses.Load(uuid)
+	if !ok {
+		return c.Status(404).JSON(fiber.Map{"status": "not_started"})
+	}
+	bs := st.(*buildState)
+	bs.mu.Lock()
+	defer bs.mu.Unlock()
+	return c.JSON(fiber.Map{
+		"status":  bs.Status,
+		"message": bs.Message,
+	})
+}
+
+func getManifestHandler(c fiber.Ctx) error {
+	uuid := c.Params("uuid")
+	if !uuidRegex.MatchString(uuid) {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid sensor UUID"})
+	}
+
+	// Fetch sensor name from backend
+	resp, err := internalRequest("GET", "/internal/sensors/"+uuid, nil)
+	if err != nil {
+		return c.Status(502).JSON(fiber.Map{"error": "backend unreachable"})
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 404 {
+		return c.Status(404).JSON(fiber.Map{"error": "sensor not found"})
+	}
+	if resp.StatusCode != 200 {
+		return c.Status(resp.StatusCode).JSON(fiber.Map{"error": "backend error"})
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var sensor map[string]any
+	json.Unmarshal(body, &sensor)
+	name, _ := sensor["name"].(string)
+
+	manifest := map[string]any{
+		"name":    name,
+		"version": "1.0.0",
+		"builds": []map[string]any{
+			{
+				"chipFamily": "ESP32-S3",
+				"parts": []map[string]any{
+					{"path": fmt.Sprintf("/api/sensors/%s/firmware.bin", uuid), "offset": 65536},
+				},
+			},
+		},
+	}
+
+	c.Set("Content-Type", "application/json")
+	return c.JSON(manifest)
+}
+
+func getFirmwareBinHandler(c fiber.Ctx) error {
+	uuid := c.Params("uuid")
+	if !uuidRegex.MatchString(uuid) {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid sensor UUID"})
+	}
+
+	st, ok := buildStatuses.Load(uuid)
+	if !ok {
+		return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
+	}
+	bs := st.(*buildState)
+	bs.mu.Lock()
+	status := bs.Status
+	binPath := bs.BinPath
+	bs.mu.Unlock()
+
+	if status != "done" {
+		return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
+	}
+
+	if _, err := os.Stat(binPath); os.IsNotExist(err) {
+		return c.Status(404).JSON(fiber.Map{"error": "firmware binary not found"})
+	}
+
+	c.Set("Content-Type", "application/octet-stream")
+	return c.SendFile(binPath)
 }
 
 func runPlatformioBuild(uuid, devEUI, appKey string, hasTTN bool) (string, error) {
@@ -295,24 +305,6 @@ func hexToCArray(hexStr string) string {
 		parts = append(parts, "0x"+hexStr[i:i+2])
 	}
 	return strings.Join(parts, ", ")
-}
-
-// manifestJSON returns the esp-web-tools manifest as a JSON string (used internally).
-func manifestJSON(name, uuid string) string {
-	m := map[string]any{
-		"name":    name,
-		"version": "1.0.0",
-		"builds": []map[string]any{
-			{
-				"chipFamily": "ESP32-S3",
-				"parts": []map[string]any{
-					{"path": fmt.Sprintf("/api/sensors/%s/firmware.bin", uuid), "offset": 65536},
-				},
-			},
-		},
-	}
-	b, _ := json.Marshal(m)
-	return string(b)
 }
 
 func copyDir(src, dst string) error {
