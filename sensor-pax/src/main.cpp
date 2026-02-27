@@ -1,22 +1,29 @@
 #include <Arduino.h>        // Must come first — pins_arduino.h must be processed before heltec_unofficial.h defines its pin macros
 #include <heltec_unofficial.h>
 #include <LoRaWAN_ESP32.h>
-#include "customs.h"
+#include "provision.h"
 #include "pax.h"
 #include "logging.h"
 
 LoRaWANNode* node;
+Config cfg;
 
 void goToSleep() {
     if (node) persist.saveSession(node);
     uint32_t interval = node ? node->timeUntilUplink() : 0;
-    uint32_t sleepSec = max(interval / 1000, (uint32_t)SLEEP_TIME_SEC);
+    uint32_t sleepSec = max(interval / 1000, (uint32_t)cfg.sleep_time_sec);
     logMessage("Sleeping for " + String(sleepSec) + "s");
     heltec_deep_sleep(sleepSec);
 }
 
 void setup() {
     heltec_setup();
+
+    if (!isConfigProvisioned()) {
+        waitForProvisioning();
+        while (true) delay(1000);  // reboots on success; never reached
+    }
+    cfg = loadConfig();
 
     // ── 1. Battery (read BEFORE BLE to avoid radio interference) ─
     pinMode(VBAT_CTRL, OUTPUT);
@@ -45,11 +52,7 @@ void setup() {
         goToSleep();
     }
 
-    // ── 4. Provision + join ──────────────────────────────────────
-    if (!persist.isProvisioned()) {
-        persist.provision("EU868", 0, JOINEUI, DEVEUI,
-                          (uint8_t*)APPKEY, (uint8_t*)APPKEY);
-    }
+    // ── 4. Join ──────────────────────────────────────────────────
     node = persist.manage(&radio);
     if (!node->isActivated()) {
         logMessage("Join failed");
@@ -59,7 +62,7 @@ void setup() {
     // ── 5. Build payload ─────────────────────────────────────────
     char payload[96];
     snprintf(payload, sizeof(payload), "%s,0,%.4f,1,%.4f",
-             sensor_id, paxCount * factor, battPct);
+             cfg.sensor_id, paxCount * cfg.factor, battPct);
     logMessage("Payload: " + String(payload));
 
     // ── 6. Send ──────────────────────────────────────────────────

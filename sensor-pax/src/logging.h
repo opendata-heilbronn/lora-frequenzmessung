@@ -2,10 +2,9 @@
 #define LOGGING_H
 
 #include <Arduino.h>
-#include "customs.h"
 
 // --- Logging Functions ---
-// Conditional logging based on ENABLE_LOGGING flag in customs.h
+// Conditional logging based on ENABLE_LOGGING build flag (-D ENABLE_LOGGING=1 in platformio.ini)
 inline void logMessage(const String& msg) {
 #if ENABLE_LOGGING
   Serial.println(msg);
