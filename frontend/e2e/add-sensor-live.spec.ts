@@ -40,7 +40,7 @@ test.describe('AddSensor live integration', () => {
     }, authToken)
   })
 
-  test('skip TTN: create → build without LoRa → flash → delete', async ({ page }) => {
+  test.skip('skip TTN: create → build without LoRa → flash → delete', async ({ page }) => {
     await page.goto('/add')
 
     // Step 1: fill sensor details

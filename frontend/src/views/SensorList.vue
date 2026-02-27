@@ -133,7 +133,7 @@
                 <OnyxButton label="Close" color="neutral" @click="cancelRebuild" />
               </div>
               <!-- Done -->
-              <div v-else-if="rebuildStatus === 'done' && !showFlash" class="rebuild-done">
+              <div v-else-if="rebuildStatus === 'done' && !showFlash && !showProvision" class="rebuild-done">
                 <OnyxInfoCard color="success">Firmware compiled successfully!</OnyxInfoCard>
                 <div class="rebuild-actions">
                   <OnyxButton label="Flash Sensor" color="primary" @click="showFlash = true; showProvision = false" />
@@ -146,6 +146,18 @@
                 <p>Connect your ESP32 sensor via USB, then click <strong>Install</strong>.</p>
                 <p class="hint">Requires Chrome or Edge browser.</p>
                 <FlashStep :manifest-url="`/api/sensors/${s.uuid}/manifest.json`" />
+                <div class="rebuild-actions">
+                  <OnyxButton label="Close" color="neutral" @click="cancelRebuild" />
+                </div>
+              </div>
+              <!-- Provision -->
+              <div v-else-if="rebuildStatus === 'done' && showProvision" class="rebuild-provision">
+                <ProvisionStep
+                  :sensor-uuid="s.uuid"
+                  :dev-eui="s.dev_eui || ''"
+                  :app-key="s.app_key || ''"
+                  :join-eui="JOIN_EUI"
+                />
                 <div class="rebuild-actions">
                   <OnyxButton label="Close" color="neutral" @click="cancelRebuild" />
                 </div>
@@ -285,6 +297,7 @@ async function startRebuild(sensor: Sensor) {
   rebuildStatus.value = 'building'
   rebuildMessage.value = ''
   showFlash.value = false
+  showProvision.value = false
   try {
     await api.post(`/api/sensors/${sensor.uuid}/build-firmware`)
   } catch {
@@ -319,6 +332,7 @@ function cancelRebuild() {
   rebuildStatus.value = 'building'
   rebuildMessage.value = ''
   showFlash.value = false
+  showProvision.value = false
   if (rebuildPollTimer) {
     clearInterval(rebuildPollTimer)
     rebuildPollTimer = null
