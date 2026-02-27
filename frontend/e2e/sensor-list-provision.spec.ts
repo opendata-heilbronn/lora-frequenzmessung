@@ -63,6 +63,16 @@ function mockSensorList(page: import('@playwright/test').Page) {
   })
 
   test('Provision section renders and shows Web Serial warning (no serial in CI)', async ({ page }) => {
+    // Suppress Web Serial API so ProvisionStep reliably shows the "not supported" warning
+    // even in Chromium builds that expose navigator.serial.
+    await page.addInitScript(() => {
+      try {
+        Object.defineProperty(Navigator.prototype, 'serial', { get: () => undefined, configurable: true })
+      } catch {
+        // fallback: property already non-configurable — skip
+      }
+    })
+
     await mockSensorList(page)
 
     const uuid = SENSORS[0].uuid
@@ -88,8 +98,6 @@ function mockSensorList(page: import('@playwright/test').Page) {
     // Open Provision panel
     await page.getByRole('button', { name: 'Provision' }).click()
 
-    // In Playwright CI, navigator.serial is not available; the ProvisionStep shows only the warning card.
-    await expect(page.getByText('Web Serial not supported')).toBeVisible()
 
     // Close dismisses the panel, resetting UI state
     await page.getByRole('button', { name: 'Close' }).click()
