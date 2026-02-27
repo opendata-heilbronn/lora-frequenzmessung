@@ -5,12 +5,6 @@
 
 // --- Logging Functions ---
 // Conditional logging based on ENABLE_LOGGING build flag (-D ENABLE_LOGGING=1 in platformio.ini)
-inline void logMessage(const String& msg) {
-#if ENABLE_LOGGING
-  Serial.println(msg);
-#endif
-}
-
 inline void logMessage(const char* msg) {
 #if ENABLE_LOGGING
   Serial.println(msg);

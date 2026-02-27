@@ -12,7 +12,7 @@ void goToSleep() {
     if (node) persist.saveSession(node);
     uint32_t interval = node ? node->timeUntilUplink() : 0;
     uint32_t sleepSec = max(interval / 1000, (uint32_t)cfg.sleep_time_sec);
-    logMessage("Sleeping for " + String(sleepSec) + "s");
+    logMessageF("Sleeping for %us", sleepSec);
     heltec_deep_sleep(sleepSec);
 }
 
@@ -63,7 +63,7 @@ void setup() {
     char payload[96];
     snprintf(payload, sizeof(payload), "%s,0,%.4f,1,%.4f",
              cfg.sensor_id, paxCount * cfg.factor, battPct);
-    logMessage("Payload: " + String(payload));
+    logMessageF("Payload: %s", payload);
 
     // ── 6. Send ──────────────────────────────────────────────────
     uint8_t downlink[256];
