@@ -18,7 +18,18 @@ void goToSleep() {
 void setup() {
     heltec_setup();
 
-    // ── 1. BLE scan ──────────────────────────────────────────────
+    // ── 1. Battery (read BEFORE BLE to avoid radio interference) ─
+    pinMode(VBAT_CTRL, OUTPUT);
+    digitalWrite(VBAT_CTRL, HIGH);  // HIGH enables the N-FET on this board
+    delay(10);
+    (void)analogReadMilliVolts(VBAT_ADC);  // dummy read for ADC stabilisation
+    delay(2);
+    float voltage = analogReadMilliVolts(VBAT_ADC) / 1000.0f * 4.9f;
+    pinMode(VBAT_CTRL, INPUT);
+    float battPct = heltec_battery_percent(voltage);
+    logMessageF("Battery: %.2fV (%.1f%%)", voltage, battPct);
+
+    // ── 2. BLE scan ──────────────────────────────────────────────
     paxSetup();
     unsigned long scanStart = millis();
     while (!new_data_available && millis() - scanStart < 35000) {
@@ -27,11 +38,6 @@ void setup() {
     uint16_t paxCount = current_count;
     paxStop();
     logMessageF("PAX count: %d", paxCount);
-
-    // ── 2. Battery ───────────────────────────────────────────────
-    float voltage = heltec_vbat();
-    float battPct = heltec_battery_percent(voltage);
-    logMessageF("Battery: %.2fV (%.1f%%)", voltage, battPct);
 
     // ── 3. Radio init ────────────────────────────────────────────
     if (radio.begin() != RADIOLIB_ERR_NONE) {
