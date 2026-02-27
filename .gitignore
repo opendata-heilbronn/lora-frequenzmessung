@@ -49,3 +49,4 @@ frontend/dist
 frontend/.vite
 **/.pio
 frontend/test-results
+.env.prod
