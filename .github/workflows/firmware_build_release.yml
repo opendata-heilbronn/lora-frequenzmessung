@@ -47,6 +47,16 @@ jobs:
         working-directory: sensor-pax
         run: platformio run --environment heltec_wifi_lora_32_V3
 
+      - name: Prepare release assets (rename 3 images)
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          SRC="sensor-pax/.pio/build/heltec_wifi_lora_32_V3"
+          cp "$SRC/bootloader.bin" "dist/heltec_wifi_lora_32_V3_bootloader.bin"
+          cp "$SRC/partitions.bin" "dist/heltec_wifi_lora_32_V3_partitions.bin"
+          cp "$SRC/firmware.bin" "dist/heltec_wifi_lora_32_V3_firmware.bin"
+          ls -l dist
+
       - name: Compute release tag
         id: tag
         run: |
@@ -64,5 +74,8 @@ jobs:
 
             **Board:** Heltec WiFi LoRa 32 V3 (ESP32-S3)
             **Commit:** ${{ github.sha }}
-          files: sensor-pax/.pio/build/heltec_wifi_lora_32_V3/firmware.bin
+          files: |
+            dist/heltec_wifi_lora_32_V3_bootloader.bin
+            dist/heltec_wifi_lora_32_V3_partitions.bin
+            dist/heltec_wifi_lora_32_V3_firmware.bin
           fail_on_unmatched_files: true

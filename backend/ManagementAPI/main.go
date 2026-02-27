@@ -35,6 +35,12 @@ func main() {
 	app.Get("/health", func(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
+	// Public firmware flashing endpoints (no auth) — required by esp-web-tools
+	app.Get("/api/sensors/:uuid/manifest.json", getManifestHandler)
+	app.Get("/api/sensors/:uuid/bootloader.bin", getBootloaderBinHandler)
+	app.Get("/api/sensors/:uuid/partitions.bin", getPartitionsBinHandler)
+	app.Get("/api/sensors/:uuid/otadata.bin", getOtaDataBinHandler)
+	app.Get("/api/sensors/:uuid/firmware.bin", getFirmwareBinHandler)
 
 	// Protected API routes
 	api := app.Group("/api", jwtMiddleware)
@@ -45,8 +51,6 @@ func main() {
 	api.Post("/sensors/:uuid/register-ttn", registerTTNHandler)
 	api.Post("/sensors/:uuid/build-firmware", buildFirmwareHandler)
 	api.Get("/sensors/:uuid/build-status", getBuildStatusHandler)
-	api.Get("/sensors/:uuid/manifest.json", getManifestHandler)
-	api.Get("/sensors/:uuid/firmware.bin", getFirmwareBinHandler)
 
 	// Graceful shutdown
 	go func() {

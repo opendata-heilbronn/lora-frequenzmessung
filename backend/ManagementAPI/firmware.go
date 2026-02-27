@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -20,7 +21,7 @@ type buildState struct {
 	mu      sync.Mutex
 	Status  string `json:"status"` // "building" | "done" | "error"
 	Message string `json:"message,omitempty"`
-	BinPath string `json:"-"`
+	BinPath string `json:"-"` // path to firmware.bin in output dir
 }
 
 var buildStatuses sync.Map // key: uuid → *buildState
@@ -136,20 +137,29 @@ func getManifestHandler(c fiber.Ctx) error {
 	json.Unmarshal(body, &sensor)
 	name, _ := sensor["name"].(string)
 
+	// Manifest used by esp-web-tools. For ESP32-S3 we flash 3 parts like the CLI example:
+	//   0x0      bootloader.bin
+	//   0x8000   partitions.bin
+	//   0x10000  firmware.bin
+	parts := []map[string]any{
+		{"path": fmt.Sprintf("/api/sensors/%s/bootloader.bin", uuid), "offset": 0x0},    // 0
+		{"path": fmt.Sprintf("/api/sensors/%s/partitions.bin", uuid), "offset": 0x8000}, // 32768
+		{"path": fmt.Sprintf("/api/sensors/%s/firmware.bin", uuid), "offset": 0x10000},  // 65536
+	}
+
 	manifest := map[string]any{
 		"name":    name,
-		"version": "1.0.0",
+		"version": "1.1.0",
 		"builds": []map[string]any{
 			{
 				"chipFamily": "ESP32-S3",
-				"parts": []map[string]any{
-					{"path": fmt.Sprintf("/api/sensors/%s/firmware.bin", uuid), "offset": 65536},
-				},
+				"parts":      parts,
 			},
 		},
 	}
 
 	c.Set("Content-Type", "application/json")
+	c.Set("Cache-Control", "no-store")
 	return c.JSON(manifest)
 }
 
@@ -166,19 +176,95 @@ func getFirmwareBinHandler(c fiber.Ctx) error {
 	bs := st.(*buildState)
 	bs.mu.Lock()
 	status := bs.Status
-	binPath := bs.BinPath
 	bs.mu.Unlock()
 
 	if status != "done" {
 		return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
 	}
 
+	binPath := filepath.Join(os.TempDir(), "firmware", uuid, "firmware.bin")
 	if _, err := os.Stat(binPath); os.IsNotExist(err) {
 		return c.Status(404).JSON(fiber.Map{"error": "firmware binary not found"})
 	}
 
 	c.Set("Content-Type", "application/octet-stream")
+	c.Set("Cache-Control", "no-store")
 	return c.SendFile(binPath)
+}
+
+func getBootloaderBinHandler(c fiber.Ctx) error {
+	uuid := c.Params("uuid")
+	if !uuidRegex.MatchString(uuid) {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid sensor UUID"})
+	}
+	st, ok := buildStatuses.Load(uuid)
+	if !ok {
+		return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
+	}
+	bs := st.(*buildState)
+	bs.mu.Lock()
+	status := bs.Status
+	bs.mu.Unlock()
+	if status != "done" {
+		return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
+	}
+	p := filepath.Join(os.TempDir(), "firmware", uuid, "bootloader.bin")
+	if _, err := os.Stat(p); os.IsNotExist(err) {
+		return c.Status(404).JSON(fiber.Map{"error": "bootloader.bin not found"})
+	}
+	c.Set("Content-Type", "application/octet-stream")
+	c.Set("Cache-Control", "no-store")
+	return c.SendFile(p)
+}
+
+func getPartitionsBinHandler(c fiber.Ctx) error {
+	uuid := c.Params("uuid")
+	if !uuidRegex.MatchString(uuid) {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid sensor UUID"})
+	}
+	st, ok := buildStatuses.Load(uuid)
+	if !ok {
+		return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
+	}
+	bs := st.(*buildState)
+	bs.mu.Lock()
+	status := bs.Status
+	bs.mu.Unlock()
+	if status != "done" {
+		return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
+	}
+	p := filepath.Join(os.TempDir(), "firmware", uuid, "partitions.bin")
+	if _, err := os.Stat(p); os.IsNotExist(err) {
+		return c.Status(404).JSON(fiber.Map{"error": "partitions.bin not found"})
+	}
+	c.Set("Content-Type", "application/octet-stream")
+	c.Set("Cache-Control", "no-store")
+	return c.SendFile(p)
+}
+
+func getOtaDataBinHandler(c fiber.Ctx) error {
+	uuid := c.Params("uuid")
+	if !uuidRegex.MatchString(uuid) {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid sensor UUID"})
+	}
+	st, ok := buildStatuses.Load(uuid)
+	if !ok {
+		return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
+	}
+	bs := st.(*buildState)
+	bs.mu.Lock()
+	status := bs.Status
+	bs.mu.Unlock()
+	if status != "done" {
+		return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
+	}
+	p := filepath.Join(os.TempDir(), "firmware", uuid, "otadata.bin")
+	if _, err := os.Stat(p); os.IsNotExist(err) {
+		return c.Status(404).JSON(fiber.Map{"error": "otadata.bin not found"})
+	}
+	c.Set("Content-Type", "application/octet-stream")
+	c.Set("Cache-Control", "no-store")
+	return c.SendFile(p)
 }
 
 func runPlatformioBuild(uuid, devEUI, appKey string, hasTTN bool) (string, error) {
@@ -232,22 +318,64 @@ func runPlatformioBuild(uuid, devEUI, appKey string, hasTTN bool) (string, error
 		return "", fmt.Errorf("platformio build failed: %w\n%s", err, string(out))
 	}
 
-	// Copy firmware.bin to a served location
-	firmwareSrc := filepath.Join(buildDir, ".pio", "build", "heltec_wifi_lora_32_V3", "firmware.bin")
-	firmwareDst := filepath.Join(os.TempDir(), "firmware", uuid, "firmware.bin")
-	if err := os.MkdirAll(filepath.Dir(firmwareDst), 0755); err != nil {
+	// Locate build artifacts
+	outDir := filepath.Join(buildDir, ".pio", "build", "heltec_wifi_lora_32_V3")
+	bootloaderSrc := filepath.Join(outDir, "bootloader.bin")
+	partitionsSrc := filepath.Join(outDir, "partitions.bin")
+	// Espressif sometimes emits ota_data_initial.bin or boot_app0.bin
+	otaInitSrc := filepath.Join(outDir, "ota_data_initial.bin")
+	bootApp0Src := filepath.Join(outDir, "boot_app0.bin")
+	firmwareSrc := filepath.Join(outDir, "firmware.bin")
+
+	// Destination directory for serving
+	dstDir := filepath.Join(os.TempDir(), "firmware", uuid)
+	if err := os.MkdirAll(dstDir, 0755); err != nil {
 		return "", fmt.Errorf("create firmware dir: %w", err)
 	}
-	if err := copyFile(firmwareSrc, firmwareDst); err != nil {
+
+	// Copy required artifacts
+	if err := copyFile(bootloaderSrc, filepath.Join(dstDir, "bootloader.bin")); err != nil {
+		return "", fmt.Errorf("copy bootloader.bin: %w", err)
+	}
+	if err := copyFile(partitionsSrc, filepath.Join(dstDir, "partitions.bin")); err != nil {
+		return "", fmt.Errorf("copy partitions.bin: %w", err)
+	}
+	// otadata: prefer ota_data_initial.bin; fallback to boot_app0.bin; if neither exists, synthesize 0x2000 bytes of 0xFF
+	otaDst := filepath.Join(dstDir, "otadata.bin")
+	if _, err := os.Stat(otaInitSrc); err == nil {
+		if err := copyFile(otaInitSrc, otaDst); err != nil {
+			return "", fmt.Errorf("copy ota_data_initial.bin: %w", err)
+		}
+	} else if _, err := os.Stat(bootApp0Src); err == nil {
+		if err := copyFile(bootApp0Src, otaDst); err != nil {
+			return "", fmt.Errorf("copy boot_app0.bin as otadata.bin: %w", err)
+		}
+	} else {
+		// Synthesize a valid (erased) OTA data sector: 0x2000 (8192) bytes of 0xFF
+		f, err := os.Create(otaDst)
+		if err != nil {
+			return "", fmt.Errorf("create synthesized otadata.bin: %w", err)
+		}
+		defer f.Close()
+		buf := bytes.Repeat([]byte{0xFF}, 0x2000)
+		if _, err := f.Write(buf); err != nil {
+			return "", fmt.Errorf("write synthesized otadata.bin: %w", err)
+		}
+		if err := f.Sync(); err != nil {
+			return "", fmt.Errorf("sync synthesized otadata.bin: %w", err)
+		}
+		log.Printf("INFO: synthesized otadata.bin (8192 bytes of 0xFF) for sensor %s", uuid)
+	}
+	if err := copyFile(firmwareSrc, filepath.Join(dstDir, "firmware.bin")); err != nil {
 		return "", fmt.Errorf("copy firmware.bin: %w", err)
 	}
 
-	// Clean up build directory now that firmware binary has been copied
+	// Clean up build directory now that firmware binaries have been copied
 	if err := os.RemoveAll(buildDir); err != nil {
 		log.Printf("WARN: failed to clean up build dir %s: %v", buildDir, err)
 	}
 
-	return firmwareDst, nil
+	return filepath.Join(dstDir, "firmware.bin"), nil
 }
 
 func generateCustomsH(sensorID, devEUI, appKey string, hasTTN bool) string {

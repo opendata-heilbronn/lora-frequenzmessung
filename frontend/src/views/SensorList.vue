@@ -136,7 +136,8 @@
               <div v-else-if="rebuildStatus === 'done' && !showFlash" class="rebuild-done">
                 <OnyxInfoCard color="success">Firmware compiled successfully!</OnyxInfoCard>
                 <div class="rebuild-actions">
-                  <OnyxButton label="Flash Sensor" color="primary" @click="showFlash = true" />
+                  <OnyxButton label="Flash Sensor" color="primary" @click="showFlash = true; showProvision = false" />
+                  <OnyxButton label="Provision" mode="outline" color="neutral" @click="showProvision = true; showFlash = false" />
                   <OnyxButton label="Close" color="neutral" @click="cancelRebuild" />
                 </div>
               </div>
@@ -189,6 +190,7 @@ import {
 import api from '../api'
 import axios from 'axios'
 import FlashStep from '../components/FlashStep.vue'
+import ProvisionStep from '../components/ProvisionStep.vue'
 import SensorMap from '../components/SensorMap.vue'
 
 interface Sensor {
@@ -227,6 +229,8 @@ const rebuildUUID = ref('')
 const rebuildStatus = ref<'building' | 'done' | 'error'>('building')
 const rebuildMessage = ref('')
 const showFlash = ref(false)
+const showProvision = ref(false)
+const JOIN_EUI = '0101010101010101'
 let rebuildPollTimer: ReturnType<typeof setInterval> | null = null
 
 async function refresh() {

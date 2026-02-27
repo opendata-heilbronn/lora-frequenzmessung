@@ -49,7 +49,6 @@
       </dl>
       <div class="actions">
         <OnyxButton label="Register with TTN →" color="primary" @click="startTTN" />
-        <OnyxButton label="Skip TTN, Build Firmware →" color="neutral" @click="skipTTN" />
       </div>
     </OnyxCard>
 
@@ -84,7 +83,7 @@
         <OnyxInfoCard color="danger">TTN registration failed: {{ ttnError }}</OnyxInfoCard>
       </div>
       <div class="actions">
-        <OnyxButton v-if="ttnData || ttnError" label="Build Firmware →" color="primary" @click="startBuild" />
+        <OnyxButton v-if="ttnData" label="Build Firmware →" color="primary" @click="startBuild" />
         <OnyxButton v-if="ttnError" label="Retry TTN" color="neutral" @click="doRegisterTTN" />
       </div>
     </OnyxCard>
@@ -92,9 +91,6 @@
     <!-- Step 4: Build firmware -->
     <OnyxCard v-if="step === 4">
       <OnyxHeadline is="h3">Build Firmware</OnyxHeadline>
-      <OnyxInfoCard v-if="!hasTTN" color="warning" style="margin-bottom: 1rem;">
-        Firmware will be built <strong>without LoRa</strong> — sensor will count PAX but not transmit.
-      </OnyxInfoCard>
       <div v-if="buildStatus === 'building'" class="status-building">
         <OnyxLoadingIndicator type="circle" />
         <span>Compiling firmware with PlatformIO…</span>
@@ -123,6 +119,24 @@
       </div>
       <FlashStep :manifest-url="`/api/sensors/${sensor.uuid}/manifest.json`" />
       <div class="actions">
+        <OnyxButton label="Provision →" color="primary" @click="step = 6" />
+        <OnyxButton label="← Back to sensor list" color="neutral" link="/" />
+      </div>
+    </OnyxCard>
+
+    <!-- Step 6: Provision over Serial (write NVS) -->
+    <OnyxCard v-if="step === 6">
+      <OnyxHeadline is="h3">Provision Device (NVS)</OnyxHeadline>
+      <OnyxInfoCard color="neutral" style="margin: 0.5rem 0 1rem;">
+        After flashing, connect to the device over USB and push the configuration into NVS.
+      </OnyxInfoCard>
+      <ProvisionStep
+        :sensor-uuid="sensor.uuid"
+        :dev-eui="ttnData?.dev_eui || ''"
+        :app-key="ttnData?.app_key || ''"
+        :join-eui="JOIN_EUI"
+      />
+      <div class="actions">
         <OnyxButton label="← Back to sensor list" color="neutral" link="/" />
       </div>
     </OnyxCard>
@@ -143,6 +157,7 @@ import {
 import api from '../api'
 import axios from 'axios'
 import FlashStep from '../components/FlashStep.vue'
+import ProvisionStep from '../components/ProvisionStep.vue'
 import MapPicker from '../components/MapPicker.vue'
 
 const progressSteps = [
@@ -151,6 +166,7 @@ const progressSteps = [
   { label: 'TTN' },
   { label: 'Build' },
   { label: 'Flash' },
+  { label: 'Provision' },
 ]
 
 const step = ref(1)
@@ -175,7 +191,7 @@ const sensor = ref({ uuid: '', name: '', type: '' })
 const ttnRegistering = ref(false)
 const ttnError = ref('')
 const ttnData = ref<{ dev_eui: string; app_key: string; ttn_device_id: string } | null>(null)
-const hasTTN = ref(false)
+const JOIN_EUI = '0101010101010101'
 
 const buildStatus = ref<'idle' | 'building' | 'done' | 'error'>('idle')
 const buildMessage = ref('')
@@ -244,7 +260,6 @@ async function doRegisterTTN() {
   try {
     const { data } = await api.post(`/api/sensors/${sensor.value.uuid}/register-ttn`)
     ttnData.value = data
-    hasTTN.value = true
   } catch (e: unknown) {
     if (axios.isAxiosError(e) && e.response?.data?.error) {
       ttnError.value = e.response.data.error
@@ -256,10 +271,6 @@ async function doRegisterTTN() {
   }
 }
 
-function skipTTN() {
-  hasTTN.value = false
-  startBuild()
-}
 
 async function startBuild() {
   step.value = 4
