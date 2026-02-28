@@ -1,0 +1,31 @@
+name: Deploy go-backend to codeberg.org
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - backend/Backend/**
+      - .forgejo/workflows/deploy-backend.yml
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to Codeberg Container Registry
+        run: echo "${{ secrets.FORGEJO_TOKEN }}" | docker login codeberg.org -u "${{ gitea.actor }}" --password-stdin
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t codeberg.org/opendata-heilbronn/backend:latest \
+            -t codeberg.org/opendata-heilbronn/backend:${{ github.run_number }} \
+            -f docker/go/backend/Dockerfile .
+
+      - name: Push Docker image
+        run: |
+          docker push codeberg.org/opendata-heilbronn/backend:latest
+          docker push codeberg.org/opendata-heilbronn/backend:${{ github.run_number }}

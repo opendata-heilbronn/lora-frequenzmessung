@@ -1,0 +1,58 @@
+name: Test and Deploy frontend to codeberg.org
+
+on:
+  workflow_dispatch: ~
+  push:
+    branches:
+      - main
+    paths:
+      - frontend/**
+      - .forgejo/workflows/deploy-frontend.yml
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Run Playwright unit tests (mocked API)
+        run: npx playwright test --project=unit
+
+  docker:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to Codeberg Container Registry
+        run: echo "${{ secrets.FORGEJO_TOKEN }}" | docker login codeberg.org -u "${{ gitea.actor }}" --password-stdin
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t codeberg.org/opendata-heilbronn/frontend:latest \
+            -t codeberg.org/opendata-heilbronn/frontend:${{ github.run_number }} \
+            -f docker/frontend/Dockerfile .
+
+      - name: Push Docker image
+        run: |
+          docker push codeberg.org/opendata-heilbronn/frontend:latest
+          docker push codeberg.org/opendata-heilbronn/frontend:${{ github.run_number }}

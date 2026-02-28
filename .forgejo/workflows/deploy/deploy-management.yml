@@ -1,0 +1,31 @@
+name: Deploy go-management to codeberg.org
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - backend/ManagementAPI/**
+      - .forgejo/workflows/deploy-management.yml
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to Codeberg Container Registry
+        run: echo "${{ secrets.FORGEJO_TOKEN }}" | docker login codeberg.org -u "${{ gitea.actor }}" --password-stdin
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t codeberg.org/opendata-heilbronn/management:latest \
+            -t codeberg.org/opendata-heilbronn/management:${{ github.run_number }} \
+            -f docker/go/management/Dockerfile .
+
+      - name: Push Docker image
+        run: |
+          docker push codeberg.org/opendata-heilbronn/management:latest
+          docker push codeberg.org/opendata-heilbronn/management:${{ github.run_number }}
