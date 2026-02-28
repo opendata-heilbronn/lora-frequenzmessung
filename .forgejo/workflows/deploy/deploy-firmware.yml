@@ -66,21 +66,36 @@ jobs:
           TAG: ${{ steps.tag.outputs.name }}
         run: |
           set -euo pipefail
+          API="https://codeberg.org/api/v1/repos/cfhn/lora-frequenzmessung"
 
-          RELEASE_ID=$(curl -sf -X POST \
-            "https://codeberg.org/api/v1/repos/cfhn/lora-frequenzmessung/releases" \
+          # Delete existing release + tag if present (makes reruns safe)
+          EXISTING_ID=$(curl -sS "${API}/releases/tags/${TAG}" \
+            -H "Authorization: token ${FORGEJO_TOKEN}" \
+            | jq -r '.id // empty')
+
+          if [ -n "$EXISTING_ID" ]; then
+            echo "Deleting existing release ${EXISTING_ID} for tag ${TAG}"
+            curl -sSf -X DELETE "${API}/releases/${EXISTING_ID}" \
+              -H "Authorization: token ${FORGEJO_TOKEN}"
+            curl -sSf -X DELETE "${API}/tags/${TAG}" \
+              -H "Authorization: token ${FORGEJO_TOKEN}"
+          fi
+
+          # Create release
+          RELEASE_ID=$(curl -sSf -X POST "${API}/releases" \
             -H "Authorization: token ${FORGEJO_TOKEN}" \
             -H "Content-Type: application/json" \
             -d "{
               \"tag_name\": \"${TAG}\",
               \"name\": \"PAX Sensor Firmware ${TAG}\",
               \"body\": \"Generic PAX sensor firmware build (no TTN credentials embedded).\n\n**Board:** Heltec WiFi LoRa 32 V3 (ESP32-S3)\n**Commit:** ${{ github.sha }}\"
-            }" \
-            | jq -r '.id')
+            }" | jq -r '.id')
+          echo "Created release ${RELEASE_ID}"
 
+          # Upload assets
           for f in dist/*; do
-            curl -sf -X POST \
-              "https://codeberg.org/api/v1/repos/cfhn/lora-frequenzmessung/releases/${RELEASE_ID}/assets" \
+            echo "Uploading ${f}..."
+            curl -sSf -X POST "${API}/releases/${RELEASE_ID}/assets" \
               -H "Authorization: token ${FORGEJO_TOKEN}" \
               -F "attachment=@${f}"
           done
