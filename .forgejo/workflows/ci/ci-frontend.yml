@@ -1,0 +1,45 @@
+name: CI – Frontend (Playwright unit tests)
+
+on:
+  pull_request:
+    paths:
+      - frontend/**
+      - '!frontend/node_modules/**'
+      - .forgejo/workflows/ci/ci-frontend.yml
+
+jobs:
+  playwright-unit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Type-check
+        run: npx vue-tsc --noEmit
+
+      - name: Run Playwright unit tests (mocked API)
+        run: npx playwright test --project=unit
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-frontend
+          path: frontend/playwright-report/
+          retention-days: 7
