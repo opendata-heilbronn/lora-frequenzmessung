@@ -58,13 +58,12 @@ func loadSensors() ([]structs2.Clients, error) {
 }
 
 var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
-	fmt.Println("Received message: ", msg.MessageID())
 	var ttnMessage structs2.TtnMessage
 	restyClient := resty.New()
 
 	clients, err := loadSensors()
 	if err != nil {
-		fmt.Println("Failed to load sensors:", err)
+		log.Printf("ERROR: failed to load sensors: %v", err)
 		return
 	}
 
@@ -140,22 +139,25 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 
 		DataWithClient.Client = clientOfMessage
 		DataWithClient.Data = densityData
-		encodedData, _ := json.Marshal(DataWithClient)
-		fmt.Println(string(encodedData))
+		encodedData, err := json.Marshal(DataWithClient)
+		if err != nil {
+			log.Printf("ERROR: failed to marshal sensor data: %v", err)
+			shift += 2
+			continue
+		}
 		_, err = restyClient.R().
 			SetHeader("X-Internal-Key", Misc2.GetInternalAPIKey()).
 			SetBody(encodedData).
 			Post(fmt.Sprintf("%s/internal/sensor-data", Misc2.GetBackendURL()))
 		if err != nil {
-			fmt.Println("cant send data to Backend due to: ")
-			fmt.Println(err)
+			log.Printf("ERROR: failed to send data to backend: %v", err)
 		}
 	}
 }
 
 func main() {
 	Misc2.StartUp()
-	println("STARTING AGGREGATOR")
+	log.Println("STARTING AGGREGATOR")
 	broker, clientID, topic, username, password, _ := Misc2.SetupVars()
 	opts := mqtt.NewClientOptions()
 	opts.SetDefaultPublishHandler(messagePubHandler)
@@ -170,22 +172,18 @@ func main() {
 func sub(client mqtt.Client, topic string) {
 	token := client.Subscribe(topic, 1, nil)
 	token.Wait()
-	fmt.Printf("Subscribed to topic: %s", topic)
-	fmt.Println()
+	log.Printf("Subscribed to topic: %s", topic)
 }
 
 func signals() {
-	fmt.Println("Starting signal handler")
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	done := make(chan bool, 1)
 	go func() {
 		sig := <-sigs
-		fmt.Println()
-		fmt.Println(sig)
+		log.Printf("Received signal: %s", sig)
 		done <- true
 	}()
-	fmt.Println("awaiting signal")
 	<-done
-	fmt.Println("exiting")
+	log.Println("Exiting")
 }

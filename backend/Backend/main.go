@@ -30,7 +30,7 @@ func validateUUID(c fiber.Ctx) (string, error) {
 
 func main() {
 	Misc.StartUp()
-	println("STARTING Backend")
+	log.Println("STARTING Backend")
 
 	app := fiber.New()
 	ctx := context.Background()
@@ -121,6 +121,5 @@ func sendData(pool *pgxpool.Pool, ctx context.Context, uuid string, sensorName s
 	if err != nil {
 		return fmt.Errorf("unable to insert data into database: %w", err)
 	}
-	fmt.Printf("Inserted sensor (%s, %v) into database \n", sensorName, value)
 	return nil
 }

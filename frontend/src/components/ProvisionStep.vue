@@ -156,7 +156,6 @@ async function provision() {
     try { writer.releaseLock(); } catch {}
     try { await port.close(); } catch {}
   } catch (e: any) {
-    console.error(e)
     error.value = e?.message || String(e)
   } finally {
     busy.value = false

@@ -42,9 +42,14 @@ func proxyDeleteSensor(c fiber.Ctx) error {
 		return c.Status(resp.StatusCode).Send(body)
 	}
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "failed to read backend response"})
+	}
 	var sensor map[string]any
-	json.Unmarshal(body, &sensor)
+	if err := json.Unmarshal(body, &sensor); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "invalid response from backend"})
+	}
 
 	// Best-effort TTN deletion before removing from DB
 	if ttnDeviceID, ok := sensor["ttn_device_id"].(string); ok && ttnDeviceID != "" {
@@ -76,9 +81,14 @@ func registerTTNHandler(c fiber.Ctx) error {
 		return c.Status(resp.StatusCode).JSON(fiber.Map{"error": "backend error"})
 	}
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "failed to read backend response"})
+	}
 	var sensor map[string]any
-	json.Unmarshal(body, &sensor)
+	if err := json.Unmarshal(body, &sensor); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "invalid response from backend"})
+	}
 
 	if devEUI, ok := sensor["dev_eui"].(string); ok && devEUI != "" {
 		return c.Status(409).JSON(fiber.Map{"error": "sensor already linked to TTN"})
@@ -102,11 +112,14 @@ func registerTTNHandler(c fiber.Ctx) error {
 	}
 
 	// Persist TTN credentials to backend
-	updatePayload, _ := json.Marshal(map[string]string{
+	updatePayload, err := json.Marshal(map[string]string{
 		"dev_eui":       newDevEUI,
 		"app_key":       appKey,
 		"ttn_device_id": ttnDeviceID,
 	})
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "internal serialization error"})
+	}
 	putResp, err := internalRequest("PUT", "/internal/sensors/"+uuid+"/ttn", bytes.NewReader(updatePayload))
 	if err != nil || putResp.StatusCode != 200 {
 		log.Printf("WARN: TTN registered but failed to persist keys for sensor %s", uuid)
