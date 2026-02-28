@@ -17,7 +17,7 @@ services:
     restart: unless-stopped
 
   backend:
-    image: ghcr.io/opendata-heilbronn/backend:${TAG}
+    image: codeberg.org/opendata-heilbronn/backend:${TAG}
     environment:
       DB_DSN: postgres://timescaledb:${POSTGRES_PASSWORD}@db:5432/postgres?sslmode=disable
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
@@ -26,7 +26,7 @@ services:
     restart: unless-stopped
 
   management:
-    image: ghcr.io/opendata-heilbronn/management:${TAG}
+    image: codeberg.org/opendata-heilbronn/management:${TAG}
     environment:
       BACKEND_INTERNAL_URL: http://backend:3001
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
@@ -41,7 +41,7 @@ services:
     restart: unless-stopped
 
   aggregator:
-    image: ghcr.io/opendata-heilbronn/aggregator:${TAG}
+    image: codeberg.org/opendata-heilbronn/aggregator:${TAG}
     environment:
       BROKER_HOST: mosquitto
       BROKER_PORT: 1883
@@ -55,7 +55,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: ghcr.io/opendata-heilbronn/frontend:${TAG}
+    image: codeberg.org/opendata-heilbronn/frontend:${TAG}
     ports:
       - "${FRONTEND_PORT}:80"
     depends_on: [management]

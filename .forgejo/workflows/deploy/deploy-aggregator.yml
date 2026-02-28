@@ -1,0 +1,32 @@
+name: Deploy go-aggregator to codeberg.org
+
+on:
+  workflow_dispatch: ~
+  push:
+    branches:
+      - main
+    paths:
+      - backend/Aggregator/**
+      - .forgejo/workflows/deploy-aggregator.yml
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to Codeberg Container Registry
+        run: echo "${{ secrets.FORGEJO_TOKEN }}" | docker login codeberg.org -u "${{ gitea.actor }}" --password-stdin
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t codeberg.org/opendata-heilbronn/aggregator:latest \
+            -t codeberg.org/opendata-heilbronn/aggregator:${{ github.run_number }} \
+            -f docker/go/Aggregator/Dockerfile .
+
+      - name: Push Docker image
+        run: |
+          docker push codeberg.org/opendata-heilbronn/aggregator:latest
+          docker push codeberg.org/opendata-heilbronn/aggregator:${{ github.run_number }}
