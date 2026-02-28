@@ -34,7 +34,9 @@ jobs:
             platformio-libdeps-${{ runner.os }}-
 
       - name: Install PlatformIO CLI
-        run: python3 -m pip install platformio
+        run: |
+          apt-get install -y python3-pip
+          python3 -m pip install platformio
 
       - name: Build firmware
         working-directory: sensor-pax
