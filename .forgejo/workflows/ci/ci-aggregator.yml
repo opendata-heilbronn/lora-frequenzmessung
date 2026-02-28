@@ -9,7 +9,7 @@ on:
       - backend/Share/**
       - backend/go.mod
       - backend/go.sum
-      - .forgejo/workflows/ci-aggregator.yml
+      - .forgejo/workflows/ci/ci-aggregator.yml
 
 jobs:
   build:

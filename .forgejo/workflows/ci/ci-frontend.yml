@@ -5,7 +5,7 @@ on:
     paths:
       - frontend/**
       - '!frontend/node_modules/**'
-      - .forgejo/workflows/ci-frontend.yml
+      - .forgejo/workflows/ci/ci-frontend.yml
 
 jobs:
   playwright-unit:
