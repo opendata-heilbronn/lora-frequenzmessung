@@ -1,0 +1,152 @@
+name: CI – E2E (full stack + Playwright)
+
+on:
+  pull_request:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+
+    services:
+      timescaledb:
+        image: timescale/timescaledb:latest-pg17
+        env:
+          POSTGRES_USER: timescaledb
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DB_DSN: postgres://timescaledb:password@localhost:5432/postgres?sslmode=disable
+      INTERNAL_API_KEY: ci-internal-key
+      BACKEND_INTERNAL_URL: http://localhost:3001
+      JWT_SECRET: ci-jwt-secret-32-chars-minimum-ok
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin
+      # TTN vars are intentionally empty — TTN-dependent live tests will be skipped
+      TTN_APP_ID: ""
+      TTN_API_KEY: ""
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Go setup & build ─────────────────────────────────────────────────
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Build Backend & ManagementAPI
+        working-directory: backend
+        run: |
+          go build -o /tmp/backend-bin    ./Backend/
+          go build -o /tmp/management-bin ./ManagementAPI/
+
+      # ── DB migrations ────────────────────────────────────────────────────
+      - name: Install golang-migrate CLI
+        run: |
+          curl -sSfL \
+            https://github.com/golang-migrate/migrate/releases/download/v4.18.1/migrate.linux-amd64.tar.gz \
+            | tar -xz -C /usr/local/bin migrate
+
+      - name: Run DB migrations
+        run: |
+          migrate \
+            -database "$DB_DSN" \
+            -path db/migrations \
+            up
+
+      # ── Start services ───────────────────────────────────────────────────
+      - name: Start Backend (port 3001)
+        run: |
+          /tmp/backend-bin &
+          echo $! > /tmp/backend.pid
+        env:
+          DB_DSN: ${{ env.DB_DSN }}
+          INTERNAL_API_KEY: ${{ env.INTERNAL_API_KEY }}
+
+      - name: Start ManagementAPI (port 3002)
+        run: |
+          /tmp/management-bin &
+          echo $! > /tmp/management.pid
+        env:
+          BACKEND_INTERNAL_URL: ${{ env.BACKEND_INTERNAL_URL }}
+          INTERNAL_API_KEY: ${{ env.INTERNAL_API_KEY }}
+          JWT_SECRET: ${{ env.JWT_SECRET }}
+          ADMIN_USERNAME: ${{ env.ADMIN_USERNAME }}
+          ADMIN_PASSWORD: ${{ env.ADMIN_PASSWORD }}
+          # Secrets are empty strings when not configured — ManagementAPI runs fine,
+          # TTN registration calls will simply fail if secrets are not set.
+          TTN_APP_ID: ${{ secrets.TTN_APP_ID }}
+          TTN_API_KEY: ${{ secrets.TTN_API_KEY }}
+          CORS_ORIGINS: "http://localhost:5173"
+
+      - name: Wait for Backend and ManagementAPI to be ready
+        run: |
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:3001/internal/sensors \
+                -H "X-Internal-Key: ci-internal-key" > /dev/null 2>&1 \
+              && curl -sf http://localhost:3002/auth/login \
+                -X POST -H "Content-Type: application/json" \
+                -d '{"username":"admin","password":"admin"}' > /dev/null 2>&1; then
+              echo "Services ready after ${i}s"
+              break
+            fi
+            echo "Waiting... (${i}s)"
+            sleep 1
+          done
+
+      # ── Node / Playwright ────────────────────────────────────────────────
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install chromium --with-deps
+
+      # Run unit tests (mocked API, dev server auto-started by playwright config)
+      - name: Run Playwright unit tests
+        working-directory: frontend
+        run: npx playwright test --project=unit
+
+      # Run live integration tests only when TTN secrets are configured in repo.
+      # Go to Codeberg repo → Settings → Actions → Secrets and add TTN_APP_ID + TTN_API_KEY
+      # to enable this step.
+      - name: Run Playwright integration tests (live, requires TTN secrets)
+        if: ${{ secrets.TTN_APP_ID != '' }}
+        working-directory: frontend
+        run: npx playwright test --project=integration --workers=1
+        env:
+          TTN_APP_ID: ${{ secrets.TTN_APP_ID }}
+          TTN_API_KEY: ${{ secrets.TTN_API_KEY }}
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-e2e
+          path: frontend/playwright-report/
+          retention-days: 7
+
+      # ── Cleanup ──────────────────────────────────────────────────────────
+      - name: Stop background services
+        if: always()
+        run: |
+          kill $(cat /tmp/backend.pid)    2>/dev/null || true
+          kill $(cat /tmp/management.pid) 2>/dev/null || true
