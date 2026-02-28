@@ -78,8 +78,9 @@ async function deleteSensorViaUI(page: Page, sensorName: string) {
   await page.getByRole('link', { name: /Back to sensor list/ }).click()
   await expect(page.locator('tr', { hasText: sensorName })).toBeVisible()
 
-  page.on('dialog', (dialog) => dialog.accept())
-  await page.locator('tr', { hasText: sensorName }).getByRole('button', { name: 'Delete' }).click()
+  const row = page.locator('tr', { hasText: sensorName })
+  await row.getByRole('button', { name: 'Delete' }).click()
+  await row.getByRole('button', { name: 'Yes' }).click()
   await expect(page.locator('tr', { hasText: sensorName })).not.toBeVisible()
 }
 

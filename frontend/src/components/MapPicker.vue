@@ -76,7 +76,7 @@ onUnmounted(() => {
 <style scoped>
 .map-container {
   width: 100%;
-  height: 300px;
+  height: 220px;
   border-radius: var(--onyx-radius-md);
   border: 1px solid var(--onyx-color-base-neutral-300);
   margin-bottom: 1rem;

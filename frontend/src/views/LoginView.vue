@@ -1,6 +1,6 @@
 <template>
   <div class="login-container">
-    <div class="login-card">
+    <div class="login-card" data-onyx-theme="light">
       <h1>LoRa Sensor Management</h1>
       <form @submit.prevent="handleLogin">
         <OnyxInput
@@ -73,6 +73,7 @@ async function handleLogin() {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  color-scheme: light;
 }
 
 h1 {
@@ -80,6 +81,11 @@ h1 {
   font-weight: 600;
   margin: 0;
   text-align: center;
+  color: var(--onyx-color-text-icons-neutral-intense, #0d1117);
+}
+
+:deep(.onyx-button) {
+  width: 100%;
 }
 
 form {

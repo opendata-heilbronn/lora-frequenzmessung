@@ -82,7 +82,7 @@ test.describe('SensorList', () => {
     await expect(unlinkedRow.getByRole('button', { name: 'Link TTN' })).not.toBeVisible()
   })
 
-  test('delete with TTN mentions TTN in confirm', async ({ page }) => {
+  test('delete shows inline confirmation and removes row on confirm', async ({ page }) => {
     await page.route('**/api/sensors', (route) => {
       if (route.request().method() === 'GET') {
         route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SENSORS) })
@@ -100,22 +100,20 @@ test.describe('SensorList', () => {
 
     await page.goto('/')
 
-    // Intercept dialog to capture the confirm message
-    let dialogMessage = ''
-    page.on('dialog', async (dialog) => {
-      dialogMessage = dialog.message()
-      await dialog.accept()
-    })
-
     const linkedRow = page.locator('tr', { hasText: 'sensor-linked' })
     await linkedRow.getByRole('button', { name: 'Delete' }).click()
 
-    expect(dialogMessage).toContain('also remove it from TTN')
-    // Row should be removed
+    // Inline confirmation should appear
+    await expect(linkedRow.getByText('Delete?')).toBeVisible()
+    await expect(linkedRow.getByRole('button', { name: 'Yes' })).toBeVisible()
+    await expect(linkedRow.getByRole('button', { name: 'Cancel' })).toBeVisible()
+
+    // Confirm deletion
+    await linkedRow.getByRole('button', { name: 'Yes' }).click()
     await expect(linkedRow).not.toBeVisible()
   })
 
-  test('delete without TTN does not mention TTN in confirm', async ({ page }) => {
+  test('delete cancel keeps the row visible', async ({ page }) => {
     await page.route('**/api/sensors', (route) => {
       if (route.request().method() === 'GET') {
         route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SENSORS) })
@@ -123,27 +121,16 @@ test.describe('SensorList', () => {
         route.continue()
       }
     })
-    await page.route('**/api/sensors/bbbb-5555-6666-7777-888888888888', (route) => {
-      if (route.request().method() === 'DELETE') {
-        route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
-      } else {
-        route.continue()
-      }
-    })
 
     await page.goto('/')
-
-    let dialogMessage = ''
-    page.on('dialog', async (dialog) => {
-      dialogMessage = dialog.message()
-      await dialog.accept()
-    })
 
     const unlinkedRow = page.locator('tr', { hasText: 'sensor-unlinked' })
     await unlinkedRow.getByRole('button', { name: 'Delete' }).click()
 
-    expect(dialogMessage).not.toContain('TTN')
-    await expect(unlinkedRow).not.toBeVisible()
+    // Cancel — row should remain
+    await unlinkedRow.getByRole('button', { name: 'Cancel' }).click()
+    await expect(unlinkedRow).toBeVisible()
+    await expect(unlinkedRow.getByText('Delete?')).not.toBeVisible()
   })
 
   test('clicking Linked badge expands TTN info panel', async ({ page }) => {
@@ -314,7 +301,7 @@ test.describe('SensorList', () => {
     await expect(page.locator('tr', { hasText: 'sensor-unlinked' })).not.toBeVisible()
 
     // Click refresh — second GET returns both sensors
-    await page.getByRole('button', { name: '↻ Refresh' }).click()
+    await page.getByRole('button', { name: 'Refresh' }).click()
 
     await expect(page.locator('tr', { hasText: 'sensor-unlinked' })).toBeVisible()
   })

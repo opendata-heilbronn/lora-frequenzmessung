@@ -4,188 +4,200 @@
       <OnyxLoadingIndicator type="circle" />
       <span>Loading sensors…</span>
     </div>
-    <div v-else-if="error" class="status error">
-      <OnyxInfoCard color="danger">{{ error }}</OnyxInfoCard>
+    <div v-else-if="loadError" class="status error">
+      <OnyxInfoCard color="danger">Failed to load sensors. Please try again.</OnyxInfoCard>
+      <OnyxButton label="Retry" color="neutral" mode="outline" @click="refresh" />
     </div>
 
-    <OnyxTable v-else-if="sensors.length">
-      <template #headline>
-        <OnyxHeadline is="h2">Registered Sensors</OnyxHeadline>
-      </template>
-      <template #actions>
-        <OnyxButton label="↻ Refresh" color="primary" @click="refresh" />
-      </template>
-      <template #head>
-        <tr>
-          <th>Name</th>
-          <th>UUID</th>
-          <th>Coordinates</th>
-          <th>Type</th>
-          <th>TTN</th>
-          <th>Last Data</th>
-          <th>Battery</th>
-          <th>Added</th>
-          <th></th>
-        </tr>
-      </template>
+    <template v-else>
+      <div v-if="pageError" class="page-error">
+        <OnyxInfoCard color="danger">{{ pageError }}</OnyxInfoCard>
+      </div>
 
-      <template v-for="s in sensors" :key="s.uuid">
-        <tr>
-          <td class="bold">{{ s.name }}</td>
-          <td class="mono">{{ s.uuid }}</td>
-          <td>
-            <span
-              class="coord-btn"
-              @click="toggleMap(s.uuid)"
-              :title="mapUUID === s.uuid ? 'Hide map' : 'Show on map'"
-            >{{ s.latitude.toFixed(6) }}, {{ s.longitude.toFixed(6) }}</span>
-          </td>
-          <td>{{ s.type }}</td>
-          <td>
-            <div class="actions-cell" v-if="s.ttn_device_id">
-              <OnyxBadge
-                :class="['badge-linked']"
-                color="success"
-                :clickable="ttnInfoUUID === s.uuid ? 'Hide TTN info' : 'Show TTN info'"
-                @click="toggleTTNInfo(s.uuid)"
-              >Linked {{ ttnInfoUUID === s.uuid ? '▲' : '▼' }}</OnyxBadge>
-            </div>
-            <div class="actions-cell" v-else>
-              <OnyxBadge :class="['badge-unlinked']" color="neutral">Not linked</OnyxBadge>
-              <OnyxButton
-                label="Link TTN"
-                mode="outline"
-                color="neutral"
-                density="compact"
-                :disabled="linkingUUID === s.uuid"
-                :loading="linkingUUID === s.uuid"
-                @click="linkTTN(s.uuid)"
-              />
-            </div>
-          </td>
-          <td>
-            <OnyxBadge
-              :class="['data-badge', lastDataClass(s.last_data_time)]"
-              :color="lastDataColor(s.last_data_time)"
-            >{{ formatAge(s.last_data_time) }}</OnyxBadge>
-          </td>
-          <td>
-            <OnyxBadge
-              v-if="s.last_battery_value !== null"
-              :class="['battery-badge', batteryClass(s.last_battery_value!)]"
-              :color="batteryColor(s.last_battery_value!)"
-            >{{ Math.round(s.last_battery_value!) }}%</OnyxBadge>
-            <span v-else class="battery-unknown">—</span>
-          </td>
-          <td>{{ formatDate(s.created_at) }}</td>
-          <td>
-            <div class="actions-cell">
-              <OnyxButton
-                :label="rebuildUUID === s.uuid ? 'Building…' : 'Rebuild'"
-                mode="outline"
-                color="neutral"
-                density="compact"
-                :disabled="rebuildUUID === s.uuid"
-                :loading="rebuildUUID === s.uuid"
-                @click="startRebuild(s)"
-              />
-              <OnyxButton
-                label="Delete"
-                color="danger"
-                density="compact"
-                @click="deleteSensor(s)"
-              />
-            </div>
-          </td>
-        </tr>
-        <tr v-if="mapUUID === s.uuid" class="map-row">
-          <td colspan="9" class="map-cell">
-            <SensorMap :lat="s.latitude" :lng="s.longitude" :name="s.name" />
-          </td>
-        </tr>
-        <tr v-if="ttnInfoUUID === s.uuid" class="ttn-info-row">
-          <td colspan="9">
-            <div class="ttn-info-panel">
-              <div class="ttn-info-grid">
-                <div class="ttn-info-item">
-                  <span class="ttn-label">Device ID</span>
-                  <span class="ttn-value mono">{{ s.ttn_device_id }}</span>
-                </div>
-                <div class="ttn-info-item">
-                  <span class="ttn-label">DevEUI</span>
-                  <span class="ttn-value mono">{{ s.dev_eui }}</span>
-                </div>
-                <div class="ttn-info-item">
-                  <span class="ttn-label">AppKey</span>
-                  <span class="ttn-value mono">{{ s.app_key }}</span>
-                </div>
-              </div>
-            </div>
-          </td>
-        </tr>
-        <tr v-if="rebuildUUID === s.uuid" class="rebuild-row">
-          <td colspan="9">
-            <div class="rebuild-panel">
-              <!-- Building -->
-              <div v-if="rebuildStatus === 'building'" class="rebuild-building">
-                <OnyxLoadingIndicator type="circle" /> Compiling firmware with PlatformIO…
-                <p class="hint">This typically takes 30–60 seconds.</p>
-                <OnyxButton label="Close" color="neutral" @click="cancelRebuild" />
-              </div>
-              <!-- Done -->
-              <div v-else-if="rebuildStatus === 'done' && !showFlash && !showProvision" class="rebuild-done">
-                <OnyxInfoCard color="success">Firmware compiled successfully!</OnyxInfoCard>
-                <div class="rebuild-actions">
-                  <OnyxButton label="Flash Sensor" color="primary" @click="showFlash = true; showProvision = false" />
-                  <OnyxButton label="Provision" mode="outline" color="neutral" @click="showProvision = true; showFlash = false" />
-                  <OnyxButton label="Close" color="neutral" @click="cancelRebuild" />
-                </div>
-              </div>
-              <!-- Flash -->
-              <div v-else-if="rebuildStatus === 'done' && showFlash" class="rebuild-flash">
-                <p>Connect your ESP32 sensor via USB, then click <strong>Install</strong>.</p>
-                <p class="hint">Requires Chrome or Edge browser.</p>
-                <FlashStep :manifest-url="`/api/sensors/${s.uuid}/manifest.json`" />
-                <div class="rebuild-actions">
-                  <OnyxButton label="Close" color="neutral" @click="cancelRebuild" />
-                </div>
-              </div>
-              <!-- Provision -->
-              <div v-else-if="rebuildStatus === 'done' && showProvision" class="rebuild-provision">
-                <ProvisionStep
-                  :sensor-uuid="s.uuid"
-                  :dev-eui="s.dev_eui || ''"
-                  :app-key="s.app_key || ''"
-                  :join-eui="JOIN_EUI"
-                />
-                <div class="rebuild-actions">
-                  <OnyxButton label="Close" color="neutral" @click="cancelRebuild" />
-                </div>
-              </div>
-              <!-- Error -->
-              <div v-else-if="rebuildStatus === 'error'" class="rebuild-error">
-                <div class="error-msg">
-                  <OnyxInfoCard color="danger">Build failed: {{ rebuildMessage }}</OnyxInfoCard>
-                </div>
-                <div class="rebuild-actions">
-                  <OnyxButton label="Retry" mode="outline" color="neutral" @click="startRebuild(s)" />
-                  <OnyxButton label="Close" color="neutral" @click="cancelRebuild" />
-                </div>
-              </div>
-            </div>
-          </td>
-        </tr>
-      </template>
+      <div v-if="sensors.length" class="table-wrapper">
+        <OnyxTable>
+          <template #headline>
+            <OnyxHeadline is="h2">Registered Sensors</OnyxHeadline>
+          </template>
+          <template #actions>
+            <OnyxButton label="Refresh" color="primary" @click="refresh" />
+          </template>
+          <template #head>
+            <tr>
+              <th>Name</th>
+              <th>UUID</th>
+              <th>Coordinates</th>
+              <th>Type</th>
+              <th>TTN</th>
+              <th>Last Data</th>
+              <th>Battery</th>
+              <th>Added</th>
+              <th></th>
+            </tr>
+          </template>
 
-      <template #empty>
-        <OnyxEmpty label="No sensors registered yet." />
-      </template>
-    </OnyxTable>
+          <template v-for="s in sensors" :key="s.uuid">
+            <tr>
+              <td class="bold">{{ s.name }}</td>
+              <td class="mono">{{ s.uuid }}</td>
+              <td>
+                <span
+                  class="coord-btn"
+                  @click="toggleMap(s.uuid)"
+                  :title="mapUUID === s.uuid ? 'Hide map' : 'Show on map'"
+                >{{ s.latitude.toFixed(6) }}, {{ s.longitude.toFixed(6) }}</span>
+              </td>
+              <td>{{ s.type }}</td>
+              <td>
+                <div class="actions-cell" v-if="s.ttn_device_id">
+                  <OnyxBadge
+                    :class="['badge-linked']"
+                    color="success"
+                    :clickable="ttnInfoUUID === s.uuid ? 'Hide TTN info' : 'Show TTN info'"
+                    @click="toggleTTNInfo(s.uuid)"
+                  >Linked {{ ttnInfoUUID === s.uuid ? '▲' : '▼' }}</OnyxBadge>
+                </div>
+                <div class="actions-cell" v-else>
+                  <OnyxBadge :class="['badge-unlinked']" color="neutral">Not linked</OnyxBadge>
+                  <OnyxButton
+                    label="Link TTN"
+                    mode="outline"
+                    color="neutral"
+                    density="compact"
+                    :disabled="linkingUUID === s.uuid"
+                    :loading="linkingUUID === s.uuid"
+                    @click="linkTTN(s.uuid)"
+                  />
+                </div>
+              </td>
+              <td>
+                <OnyxBadge
+                  :class="['data-badge', lastDataClass(s.last_data_time)]"
+                  :color="lastDataColor(s.last_data_time)"
+                >{{ formatAge(s.last_data_time) }}</OnyxBadge>
+              </td>
+              <td>
+                <OnyxBadge
+                  v-if="s.last_battery_value !== null"
+                  :class="['battery-badge', batteryClass(s.last_battery_value!)]"
+                  :color="batteryColor(s.last_battery_value!)"
+                >{{ Math.round(s.last_battery_value!) }}%</OnyxBadge>
+                <span v-else class="battery-unknown">—</span>
+              </td>
+              <td>{{ formatDate(s.created_at) }}</td>
+              <td>
+                <div class="actions-cell">
+                  <OnyxButton
+                    :label="rebuildUUID === s.uuid ? 'Building…' : 'Rebuild'"
+                    mode="outline"
+                    color="neutral"
+                    density="compact"
+                    :disabled="rebuildUUID === s.uuid"
+                    :loading="rebuildUUID === s.uuid"
+                    @click="startRebuild(s)"
+                  />
+                  <span class="action-separator"></span>
+                  <template v-if="deleteConfirmUUID === s.uuid">
+                    <span class="delete-confirm-text">Delete?</span>
+                    <OnyxButton label="Yes" color="danger" density="compact" @click="confirmDelete(s)" />
+                    <OnyxButton label="Cancel" color="neutral" density="compact" @click="deleteConfirmUUID = ''" />
+                  </template>
+                  <OnyxButton
+                    v-else
+                    label="Delete"
+                    color="danger"
+                    density="compact"
+                    @click="deleteConfirmUUID = s.uuid"
+                  />
+                </div>
+              </td>
+            </tr>
+            <tr v-if="mapUUID === s.uuid" class="map-row">
+              <td colspan="9" class="map-cell">
+                <SensorMap :lat="s.latitude" :lng="s.longitude" :name="s.name" />
+              </td>
+            </tr>
+            <tr v-if="ttnInfoUUID === s.uuid" class="ttn-info-row">
+              <td colspan="9">
+                <div class="ttn-info-panel">
+                  <div class="ttn-info-grid">
+                    <div class="ttn-info-item">
+                      <span class="ttn-label">Device ID</span>
+                      <span class="ttn-value mono">{{ s.ttn_device_id }}</span>
+                    </div>
+                    <div class="ttn-info-item">
+                      <span class="ttn-label">DevEUI</span>
+                      <span class="ttn-value mono">{{ s.dev_eui }}</span>
+                    </div>
+                    <div class="ttn-info-item">
+                      <span class="ttn-label">AppKey</span>
+                      <span class="ttn-value mono">{{ s.app_key }}</span>
+                    </div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="rebuildUUID === s.uuid" class="rebuild-row">
+              <td colspan="9">
+                <div class="rebuild-panel">
+                  <!-- Building -->
+                  <div v-if="rebuildStatus === 'building'" class="rebuild-building">
+                    <OnyxLoadingIndicator type="circle" /> Compiling firmware with PlatformIO…
+                    <p class="hint">This typically takes 30–60 seconds.</p>
+                    <OnyxButton label="Close" color="neutral" @click="cancelRebuild" />
+                  </div>
+                  <!-- Done -->
+                  <div v-else-if="rebuildStatus === 'done' && !showFlash && !showProvision" class="rebuild-done">
+                    <OnyxInfoCard color="success">Firmware compiled successfully!</OnyxInfoCard>
+                    <div class="rebuild-actions">
+                      <OnyxButton label="Flash Sensor" color="primary" @click="showFlash = true; showProvision = false" />
+                      <OnyxButton label="Provision" mode="outline" color="neutral" @click="showProvision = true; showFlash = false" />
+                      <OnyxButton label="Close" color="neutral" @click="cancelRebuild" />
+                    </div>
+                  </div>
+                  <!-- Flash -->
+                  <div v-else-if="rebuildStatus === 'done' && showFlash" class="rebuild-flash">
+                    <p>Connect your ESP32 sensor via USB, then click <strong>Install</strong>.</p>
+                    <p class="hint">Requires Chrome or Edge browser.</p>
+                    <FlashStep :manifest-url="`/api/sensors/${s.uuid}/manifest.json`" />
+                    <div class="rebuild-actions">
+                      <OnyxButton label="Close" color="neutral" @click="cancelRebuild" />
+                    </div>
+                  </div>
+                  <!-- Provision -->
+                  <div v-else-if="rebuildStatus === 'done' && showProvision" class="rebuild-provision">
+                    <ProvisionStep
+                      :sensor-uuid="s.uuid"
+                      :dev-eui="s.dev_eui || ''"
+                      :app-key="s.app_key || ''"
+                      :join-eui="JOIN_EUI"
+                    />
+                    <div class="rebuild-actions">
+                      <OnyxButton label="Close" color="neutral" @click="cancelRebuild" />
+                    </div>
+                  </div>
+                  <!-- Error -->
+                  <div v-else-if="rebuildStatus === 'error'" class="rebuild-error">
+                    <div class="error-msg">
+                      <OnyxInfoCard color="danger">Build failed: {{ rebuildMessage }}</OnyxInfoCard>
+                    </div>
+                    <div class="rebuild-actions">
+                      <OnyxButton label="Retry" mode="outline" color="neutral" @click="startRebuild(s)" />
+                      <OnyxButton label="Close" color="neutral" @click="cancelRebuild" />
+                    </div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </template>
+        </OnyxTable>
+      </div>
 
-    <div v-else class="empty">
-      <p>No sensors registered yet.</p>
-      <router-link to="/add">Add your first sensor →</router-link>
-    </div>
+      <div v-else class="empty">
+        <p>No sensors registered yet.</p>
+        <OnyxButton label="Add your first sensor" color="primary" link="/add" />
+      </div>
+    </template>
   </div>
 </template>
 
@@ -223,8 +235,21 @@ interface Sensor {
 
 const sensors = ref<Sensor[]>([])
 const loading = ref(false)
-const error = ref('')
+const loadError = ref(false)
 const linkingUUID = ref('')
+
+// Inline delete confirmation
+const deleteConfirmUUID = ref('')
+
+// Page-level action error (TTN, delete) — auto-clears after 6s
+const pageError = ref('')
+let errorTimer: ReturnType<typeof setTimeout> | null = null
+
+function showError(msg: string) {
+  pageError.value = msg
+  if (errorTimer) clearTimeout(errorTimer)
+  errorTimer = setTimeout(() => { pageError.value = '' }, 6000)
+}
 
 const ttnInfoUUID = ref('')
 const mapUUID = ref('')
@@ -247,12 +272,12 @@ let rebuildPollTimer: ReturnType<typeof setInterval> | null = null
 
 async function refresh() {
   loading.value = true
-  error.value = ''
+  loadError.value = false
   try {
     const { data } = await api.get<Sensor[]>('/api/sensors')
     sensors.value = data
-  } catch (e: unknown) {
-    error.value = e instanceof Error ? e.message : 'Failed to load sensors'
+  } catch {
+    loadError.value = true
   } finally {
     loading.value = false
   }
@@ -272,22 +297,19 @@ async function linkTTN(uuid: string) {
     const msg = axios.isAxiosError(e) && e.response?.data?.error
       ? e.response.data.error
       : 'TTN registration failed'
-    alert(msg)
+    showError(msg)
   } finally {
     linkingUUID.value = ''
   }
 }
 
-async function deleteSensor(s: Sensor) {
-  const message = s.ttn_device_id
-    ? `Delete sensor "${s.name}"? This will also remove it from TTN.`
-    : `Delete sensor "${s.name}"?`
-  if (!confirm(message)) return
+async function confirmDelete(s: Sensor) {
+  deleteConfirmUUID.value = ''
   try {
     await api.delete(`/api/sensors/${s.uuid}`)
     sensors.value = sensors.value.filter(x => x.uuid !== s.uuid)
   } catch (e: unknown) {
-    alert(e instanceof Error ? e.message : 'Delete failed')
+    showError(e instanceof Error ? e.message : 'Delete failed')
   }
 }
 
@@ -388,6 +410,10 @@ onUnmounted(() => {
     clearInterval(rebuildPollTimer)
     rebuildPollTimer = null
   }
+  if (errorTimer) {
+    clearTimeout(errorTimer)
+    errorTimer = null
+  }
 })
 </script>
 
@@ -402,9 +428,21 @@ onUnmounted(() => {
   color: var(--onyx-color-text-icons-neutral-medium);
 }
 
+.page-error {
+  margin-bottom: 1rem;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
 .empty {
   padding: 3rem;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
 }
 
 .bold { font-weight: 600; }
@@ -414,6 +452,19 @@ onUnmounted(() => {
   display: flex;
   gap: 0.5rem;
   align-items: center;
+}
+
+.action-separator {
+  width: 1px;
+  height: 1.25rem;
+  background: var(--onyx-color-base-neutral-300);
+  flex-shrink: 0;
+}
+
+.delete-confirm-text {
+  font-size: 0.8rem;
+  color: var(--onyx-color-text-icons-neutral-medium);
+  white-space: nowrap;
 }
 
 .coord-btn {

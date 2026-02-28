@@ -50,3 +50,4 @@ frontend/.vite
 **/.pio
 frontend/test-results
 .env.prod
+/sensor-pax/.playwright-mcp/

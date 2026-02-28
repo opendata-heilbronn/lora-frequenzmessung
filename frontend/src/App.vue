@@ -8,7 +8,7 @@
           <OnyxNavItem label="Sensors" link="/" />
         </template>
         <template #contextArea>
-          <OnyxButton label="Logout" variant="plain" @click="logout" />
+          <OnyxButton label="Logout" mode="plain" color="neutral" @click="logout" />
         </template>
       </OnyxNavBar>
     </template>

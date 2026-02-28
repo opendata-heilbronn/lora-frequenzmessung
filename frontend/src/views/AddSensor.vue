@@ -23,15 +23,15 @@
         <div class="coord-row">
           <label class="coord-label">
             Latitude
-            <input v-model.number="form.latitude" type="number" step="any" required min="-90" max="90" placeholder="49.1438602" class="coord-input" />
+            <input v-model.number="form.latitude" type="number" step="any" required min="-90" max="90" placeholder="49.143845" class="coord-input" />
           </label>
           <label class="coord-label">
             Longitude
-            <input v-model.number="form.longitude" type="number" step="any" required min="-180" max="180" placeholder="9.2149624" class="coord-input" />
+            <input v-model.number="form.longitude" type="number" step="any" required min="-180" max="180" placeholder="9.214797" class="coord-input" />
           </label>
         </div>
         <div class="actions">
-          <OnyxButton type="submit" label="Create Sensor →" color="primary" :loading="creating" :disabled="creating" />
+          <OnyxButton type="submit" label="Create Sensor" color="primary" :loading="creating" :disabled="creating" />
         </div>
         <div v-if="createError" class="error-msg">
           <OnyxInfoCard color="danger">{{ createError }}</OnyxInfoCard>
@@ -48,7 +48,8 @@
         <div class="info-row"><dt>Type</dt><dd><code>{{ sensor.type }}</code></dd></div>
       </dl>
       <div class="actions">
-        <OnyxButton label="Register with TTN →" color="primary" @click="startTTN" />
+        <OnyxButton label="Register with TTN" color="primary" @click="startTTN" />
+        <OnyxButton label="Back to sensor list" color="neutral" link="/" />
       </div>
     </OnyxCard>
 
@@ -83,8 +84,9 @@
         <OnyxInfoCard color="danger">TTN registration failed: {{ ttnError }}</OnyxInfoCard>
       </div>
       <div class="actions">
-        <OnyxButton v-if="ttnData" label="Build Firmware →" color="primary" @click="startBuild" />
+        <OnyxButton v-if="ttnData" label="Build Firmware" color="primary" @click="startBuild" />
         <OnyxButton v-if="ttnError" label="Retry TTN" color="neutral" @click="doRegisterTTN" />
+        <OnyxButton label="Back to sensor list" color="neutral" link="/" />
       </div>
     </OnyxCard>
 
@@ -105,8 +107,9 @@
       <div v-else class="status-idle">
         <OnyxButton label="Start Build" color="primary" @click="startBuild" />
       </div>
-      <div v-if="buildStatus === 'done'" class="actions">
-        <OnyxButton label="Flash Sensor →" color="primary" @click="step = 5" />
+      <div class="actions">
+        <OnyxButton v-if="buildStatus === 'done'" label="Flash Sensor" color="primary" @click="step = 5" />
+        <OnyxButton label="Back to sensor list" color="neutral" link="/" />
       </div>
     </OnyxCard>
 
@@ -119,8 +122,8 @@
       </div>
       <FlashStep :manifest-url="`/api/sensors/${sensor.uuid}/manifest.json`" />
       <div class="actions">
-        <OnyxButton label="Provision →" color="primary" @click="step = 6" />
-        <OnyxButton label="← Back to sensor list" color="neutral" link="/" />
+        <OnyxButton label="Provision" color="primary" @click="step = 6" />
+        <OnyxButton label="Back to sensor list" color="neutral" link="/" />
       </div>
     </OnyxCard>
 
@@ -137,7 +140,7 @@
         :join-eui="JOIN_EUI"
       />
       <div class="actions">
-        <OnyxButton label="← Back to sensor list" color="neutral" link="/" />
+        <OnyxButton label="Back to sensor list" color="neutral" link="/" />
       </div>
     </OnyxCard>
   </div>
@@ -171,8 +174,8 @@ const progressSteps = [
 
 const step = ref(1)
 
-const DEFAULT_LAT = 49.143845257365456
-const DEFAULT_LNG = 9.214797255696741
+const DEFAULT_LAT = 49.1438453
+const DEFAULT_LNG = 9.2147973
 
 const form = ref({ name: '', latitude: DEFAULT_LAT, longitude: DEFAULT_LNG })
 
@@ -323,6 +326,7 @@ onUnmounted(() => {
   display: flex;
   gap: 1rem;
 }
+
 .coord-label {
   flex: 1;
   display: flex;
@@ -332,6 +336,7 @@ onUnmounted(() => {
   font-size: var(--onyx-font-size-sm);
   color: var(--onyx-color-text-icons-neutral-medium);
 }
+
 .coord-input {
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--onyx-color-base-neutral-300);
@@ -343,6 +348,7 @@ onUnmounted(() => {
   background: var(--onyx-color-base-background-blank);
   color: var(--onyx-color-text-icons-neutral-intense);
 }
+
 .coord-input:focus {
   outline: 2px solid var(--onyx-color-base-primary-500);
   border-color: transparent;

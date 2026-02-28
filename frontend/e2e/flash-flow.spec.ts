@@ -68,31 +68,31 @@ test.describe('Add Sensor → Build → Flash → Provision flow (mocked)', () =
     await page.getByLabel('Name').fill(sensorName)
 
     // Submit create sensor
-    await page.getByRole('button', { name: 'Create Sensor →' }).click()
+    await page.getByRole('button', { name: 'Create Sensor' }).click()
 
     // Step 2 should show UUID and name
     await expect(page.locator('dt', { hasText: 'UUID' }).locator('..')).toContainText(sensorUUID)
     await expect(page.locator('dt', { hasText: 'Name' }).locator('..')).toContainText(sensorName)
 
     // Proceed to TTN registration
-    await page.getByRole('button', { name: 'Register with TTN →' }).click()
+    await page.getByRole('button', { name: 'Register with TTN' }).click()
 
     // Wait for success card then click Build Firmware
     await expect(page.getByText('Device registered with TTN!')).toBeVisible()
-    await page.getByRole('button', { name: 'Build Firmware →' }).click()
+    await page.getByRole('button', { name: 'Build Firmware' }).click()
 
     // Build phase completes (polling sees done)
     await expect(page.getByText('Firmware compiled successfully!')).toBeVisible()
 
     // Move to Flash step
-    await page.getByRole('button', { name: 'Flash Sensor →' }).click()
+    await page.getByRole('button', { name: 'Flash Sensor' }).click()
 
     // Assert the manifest URL on the custom element
     const manifestAttr = await page.locator('esp-web-install-button').getAttribute('manifest')
     expect(manifestAttr).toBe(`/api/sensors/${sensorUUID}/manifest.json`)
 
     // Proceed to Provision step
-    await page.getByRole('button', { name: 'Provision →' }).click()
+    await page.getByRole('button', { name: /^Provision$/ }).click()
 
   })
 })
