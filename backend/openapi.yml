@@ -1,0 +1,35 @@
+openapi: 3.0.0
+info:
+  title: lora-lalalalal
+  description: Api definition of the api and yaml conf
+  version: 0.1.0
+paths:
+  /: {}
+components:
+  schemas:
+    yaml-Client:
+      type: object
+      properties:
+        longitude:
+          type: number
+          example: 9.2149624
+        latitude:
+          type: number
+          example: 49.1438602
+        uuid:
+          type: string
+          example: "f4b894f9b0db"
+        name:
+          type: string
+          example: "code-for-heilbronn_density_sensor"
+        type:
+          type: string
+          oneOf:
+            - "density"
+          example:  "density"
+      required:
+        - longitude
+        - latitude
+        - uuid
+        - name
+        - type
