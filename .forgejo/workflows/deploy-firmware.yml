@@ -1,0 +1,88 @@
+name: Build and Release PAX Sensor Firmware
+
+on:
+  workflow_dispatch: ~
+  push:
+    branches:
+      - main
+    paths:
+      - sensor-pax/**
+      - .forgejo/workflows/deploy-firmware.yml
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache PlatformIO core and toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-core-${{ runner.os }}-${{ hashFiles('sensor-pax/platformio.ini') }}
+          restore-keys: |
+            platformio-core-${{ runner.os }}-
+
+      - name: Cache PlatformIO library dependencies
+        uses: actions/cache@v4
+        with:
+          path: sensor-pax/.pio/libdeps
+          key: platformio-libdeps-${{ runner.os }}-${{ hashFiles('sensor-pax/platformio.ini') }}
+          restore-keys: |
+            platformio-libdeps-${{ runner.os }}-
+
+      - name: Install PlatformIO CLI
+        run: pip install platformio
+
+      - name: Build firmware
+        working-directory: sensor-pax
+        run: platformio run --environment heltec_wifi_lora_32_V3
+
+      - name: Prepare release assets (rename 3 images)
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          SRC="sensor-pax/.pio/build/heltec_wifi_lora_32_V3"
+          cp "$SRC/bootloader.bin" "dist/heltec_wifi_lora_32_V3_bootloader.bin"
+          cp "$SRC/partitions.bin" "dist/heltec_wifi_lora_32_V3_partitions.bin"
+          cp "$SRC/firmware.bin"   "dist/heltec_wifi_lora_32_V3_firmware.bin"
+          ls -l dist
+
+      - name: Compute release tag
+        id: tag
+        run: |
+          DATE=$(date -u +%Y%m%d)
+          SHA=$(git rev-parse --short HEAD)
+          echo "name=firmware-pax-${DATE}-${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Create Codeberg release and upload assets
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          set -euo pipefail
+
+          RELEASE_ID=$(curl -sf -X POST \
+            "https://codeberg.org/api/v1/repos/opendata-heilbronn/lora-frequenzmessung/releases" \
+            -H "Authorization: token ${FORGEJO_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"tag_name\": \"${TAG}\",
+              \"name\": \"PAX Sensor Firmware ${TAG}\",
+              \"body\": \"Generic PAX sensor firmware build (no TTN credentials embedded).\n\n**Board:** Heltec WiFi LoRa 32 V3 (ESP32-S3)\n**Commit:** ${{ github.sha }}\"
+            }" \
+            | jq -r '.id')
+
+          for f in dist/*; do
+            curl -sf -X POST \
+              "https://codeberg.org/api/v1/repos/opendata-heilbronn/lora-frequenzmessung/releases/${RELEASE_ID}/assets" \
+              -H "Authorization: token ${FORGEJO_TOKEN}" \
+              -F "attachment=@${f}"
+          done
