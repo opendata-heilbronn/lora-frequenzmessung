@@ -1,0 +1,31 @@
+name: CI – Aggregator (Go)
+
+on:
+  pull_request:
+    paths:
+      - backend/Aggregator/**
+      - backend/structs/**
+      - backend/internal/**
+      - backend/Share/**
+      - backend/go.mod
+      - backend/go.sum
+      - .forgejo/workflows/ci-aggregator.yml
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Build Aggregator
+        run: go build ./Aggregator/...
