@@ -23,7 +23,7 @@ jobs:
           --health-retries 10
 
     env:
-      DB_DSN: postgres://timescaledb:password@localhost:5432/postgres?sslmode=disable
+      DB_DSN: postgres://timescaledb:password@timescaledb:5432/postgres?sslmode=disable
       INTERNAL_API_KEY: ci-internal-key
       BACKEND_INTERNAL_URL: http://localhost:3001
       JWT_SECRET: ci-jwt-secret-32-chars-minimum-ok
