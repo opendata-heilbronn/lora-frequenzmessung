@@ -7,7 +7,7 @@ on:
       - main
     paths:
       - sensor-pax/**
-      - .forgejo/workflows/deploy-firmware.yml
+      - .forgejo/workflows/deploy/deploy-firmware.yml
 
 jobs:
   build-and-release:
@@ -16,11 +16,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12.12'
 
       - name: Cache PlatformIO core and toolchain
         uses: actions/cache@v4
@@ -70,7 +65,7 @@ jobs:
           set -euo pipefail
 
           RELEASE_ID=$(curl -sf -X POST \
-            "https://codeberg.org/api/v1/repos/opendata-heilbronn/lora-frequenzmessung/releases" \
+            "https://codeberg.org/api/v1/repos/cfhn/lora-frequenzmessung/releases" \
             -H "Authorization: token ${FORGEJO_TOKEN}" \
             -H "Content-Type: application/json" \
             -d "{
@@ -82,7 +77,7 @@ jobs:
 
           for f in dist/*; do
             curl -sf -X POST \
-              "https://codeberg.org/api/v1/repos/opendata-heilbronn/lora-frequenzmessung/releases/${RELEASE_ID}/assets" \
+              "https://codeberg.org/api/v1/repos/cfhn/lora-frequenzmessung/releases/${RELEASE_ID}/assets" \
               -H "Authorization: token ${FORGEJO_TOKEN}" \
               -F "attachment=@${f}"
           done
