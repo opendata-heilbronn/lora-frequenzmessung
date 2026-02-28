@@ -36,7 +36,7 @@ jobs:
       - name: Install PlatformIO CLI
         run: |
           apt-get update
-          apt-get install -y python3-pip
+          apt-get install -y python3-pip jq
           python3 -m pip install --break-system-packages platformio
 
       - name: Build firmware
