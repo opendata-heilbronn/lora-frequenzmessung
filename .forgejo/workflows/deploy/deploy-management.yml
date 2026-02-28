@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Login to Codeberg Container Registry
-        run: echo "${{ secrets.FORGEJO_TOKEN }}" | docker login codeberg.org -u "${{ gitea.actor }}" --password-stdin
+        run: echo "${{ secrets.FORGEJO_TOKEN }}" | docker login codeberg.org -u "${{ github.actor }}" --password-stdin
 
       - name: Build Docker image
         run: |
