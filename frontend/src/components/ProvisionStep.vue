@@ -6,9 +6,9 @@
 
     <div v-else>
       <div class="grid">
-        <OnyxInput label="Factor" type="number" :step="0.01" :model-value="factorStr"
+        <OnyxInput label="Factor" :step="0.01" :model-value="factorStr"
                     @update:model-value="onFactorChange" />
-        <OnyxInput label="Sleep (sec)" type="number" :model-value="sleepStr"
+        <OnyxInput label="Sleep (sec)" :model-value="sleepStr"
                     @update:model-value="onSleepChange" />
       </div>
 
