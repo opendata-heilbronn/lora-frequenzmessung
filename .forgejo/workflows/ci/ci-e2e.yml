@@ -14,8 +14,6 @@ jobs:
           POSTGRES_USER: timescaledb
           POSTGRES_PASSWORD: password
           POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
         options: >-
           --health-cmd pg_isready
           --health-interval 5s
