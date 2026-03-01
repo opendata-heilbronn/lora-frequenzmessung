@@ -44,6 +44,7 @@ services:
     environment:
       BROKER_HOST: ${BROKER_HOST}
       BROKER_PORT: ${BROKER_PORT}
+      CLIENTID: ${CLIENTID}
       MQTT_USERNAME: ${MQTT_USERNAME}
       MQTT_PASSWORD: ${MQTT_PASSWORD}
       TOPIC: ${TOPIC}
