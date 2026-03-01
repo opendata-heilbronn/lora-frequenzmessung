@@ -25,6 +25,9 @@
       <div v-if="pageSuccess" class="page-success">
         <OnyxInfoCard color="success">{{ pageSuccess }}</OnyxInfoCard>
       </div>
+      <div v-if="pageInfo" class="page-info">
+        <OnyxInfoCard color="info">{{ pageInfo }}</OnyxInfoCard>
+      </div>
 
       <div v-if="sensors.length" class="table-wrapper">
         <OnyxTable>
@@ -125,6 +128,16 @@
                     :disabled="rebuildUUID === s.uuid"
                     :loading="rebuildUUID === s.uuid"
                     @click="startRebuild(s)"
+                  />
+                  <OnyxButton
+                    label="Trigger OTA"
+                    mode="outline"
+                    color="neutral"
+                    density="compact"
+                    :disabled="!s.ttn_device_id || otaUUID === s.uuid"
+                    :loading="otaUUID === s.uuid"
+                    title="Download and install next firmware version over WiFi"
+                    @click="triggerOTA(s.uuid)"
                   />
                   <span class="action-separator"></span>
                   <template v-if="deleteConfirmUUID === s.uuid">
@@ -303,6 +316,18 @@ const rebuildMessage = ref('')
 const showFlashAndProvision = ref(false)
 let rebuildPollTimer: ReturnType<typeof setInterval> | null = null
 
+// Page-level info card (e.g. already-on-latest OTA) — auto-clears after 6s
+const pageInfo = ref('')
+let infoTimer: ReturnType<typeof setTimeout> | null = null
+
+function showInfo(msg: string) {
+  pageInfo.value = msg
+  if (infoTimer) clearTimeout(infoTimer)
+  infoTimer = setTimeout(() => { pageInfo.value = '' }, 6000)
+}
+
+const otaUUID = ref('')
+
 async function refresh() {
   loading.value = true
   loadError.value = false
@@ -371,6 +396,25 @@ async function confirmAndRequestAllVersions() {
       ? e.response.data.error
       : 'Bulk version request failed'
     showError(msg)
+  }
+}
+
+async function triggerOTA(uuid: string) {
+  otaUUID.value = uuid
+  try {
+    const { data } = await api.post(`/api/sensors/${uuid}/trigger-ota`)
+    showSuccess(data.message ?? 'OTA queued — sensor updates on next wake')
+  } catch (e: unknown) {
+    if (axios.isAxiosError(e) && e.response?.status === 409) {
+      showInfo(e.response.data?.error ?? 'Sensor is already on the latest version')
+    } else {
+      const msg = axios.isAxiosError(e) && e.response?.data?.error
+        ? e.response.data.error
+        : 'OTA trigger failed'
+      showError(msg)
+    }
+  } finally {
+    otaUUID.value = ''
   }
 }
 
@@ -476,6 +520,10 @@ onUnmounted(() => {
   if (successTimer) {
     clearTimeout(successTimer)
     successTimer = null
+  }
+  if (infoTimer) {
+    clearTimeout(infoTimer)
+    infoTimer = null
   }
 })
 </script>
