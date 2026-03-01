@@ -122,6 +122,10 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 				log.Printf("WARN: unknown sensor %q, skipping version update", sensoreID)
 				continue
 			}
+			if version == "" {
+				log.Printf("WARN: sensor %q reported empty firmware version, skipping", sensoreID)
+				continue
+			}
 			patchFirmwareVersion(sensoreID, version)
 			continue
 		}
@@ -147,7 +151,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 		}
 		if !found {
 			log.Printf("WARN: unknown sensor %q, skipping", sensoreID)
-			return
+			continue
 		}
 		var DataWithClient structs2.DensityDataWithClient
 		switch typeID {
