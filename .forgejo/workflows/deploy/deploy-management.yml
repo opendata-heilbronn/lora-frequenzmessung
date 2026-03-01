@@ -5,6 +5,11 @@ on:
     branches: [main, develop]
     paths:
       - backend/ManagementAPI/**
+      - backend/Share/**
+      - backend/structs/**
+      - backend/internal/**
+      - backend/go.mod
+      - backend/go.sum
       - docker/go/management/Dockerfile
       - .forgejo/workflows/deploy/deploy-management.yml
 
