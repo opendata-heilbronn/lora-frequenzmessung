@@ -142,8 +142,8 @@
                 <div class="rebuild-panel">
                   <!-- Building -->
                   <div v-if="rebuildStatus === 'building'" class="rebuild-building">
-                    <OnyxLoadingIndicator type="circle" /> Compiling firmware with PlatformIO…
-                    <p class="hint">This typically takes 30–60 seconds.</p>
+                    <OnyxLoadingIndicator type="circle" /> Downloading firmware…
+                    <p class="hint">This should only take a moment.</p>
                     <OnyxButton label="Close" color="neutral" @click="cancelRebuild" />
                   </div>
                   <!-- Done -->
