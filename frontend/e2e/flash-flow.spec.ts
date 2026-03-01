@@ -77,9 +77,8 @@ test.describe('Add Sensor → Build → Flash & Provision flow (mocked)', () => 
     await expect(page.getByRole('button', { name: /Flash Sensor/ })).toBeVisible({ timeout: 10000 })
     await page.getByRole('button', { name: /Flash Sensor/ }).click()
 
-    // Assert the manifest URL on the custom element (in FlashAndProvisionStep, idle phase)
-    const manifestAttr = await page.locator('esp-web-install-button').getAttribute('manifest')
-    expect(manifestAttr).toBe(`/api/sensors/${sensorUUID}/manifest.json`)
+    // FlashAndProvisionStep idle phase: custom flash button is visible
+    await expect(page.getByRole('button', { name: /Connect & Flash/ })).toBeVisible()
 
     // Verify there is no separate Provision step button — flashing auto-triggers provision
     await expect(page.getByRole('button', { name: /^Provision$/ })).not.toBeVisible()

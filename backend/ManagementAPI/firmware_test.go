@@ -39,7 +39,7 @@ func mockCodebergServer(t *testing.T, tag string, assets map[string][]byte) *htt
 			})
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"assets": assetList})
+		json.NewEncoder(w).Encode(map[string]any{"tag_name": tag, "assets": assetList})
 	})
 
 	// Serve binary downloads
@@ -63,9 +63,9 @@ func mockCodebergServer(t *testing.T, tag string, assets map[string][]byte) *htt
 // the three required binaries and synthesizes otadata.bin.
 func TestDownloadFirmware_Stable(t *testing.T) {
 	assets := map[string][]byte{
-		"heltec_wifi_lora_32_V3_bootloader.bin":  []byte("bootloader-data"),
-		"heltec_wifi_lora_32_V3_partitions.bin":  []byte("partitions-data"),
-		"heltec_wifi_lora_32_V3_firmware.bin":    []byte("firmware-data"),
+		"heltec_wifi_lora_32_V3_bootloader.bin": []byte("bootloader-data"),
+		"heltec_wifi_lora_32_V3_partitions.bin": []byte("partitions-data"),
+		"heltec_wifi_lora_32_V3_firmware.bin":   []byte("firmware-data"),
 	}
 	srv := mockCodebergServer(t, "firmware-pax-stable", assets)
 
@@ -79,9 +79,12 @@ func TestDownloadFirmware_Stable(t *testing.T) {
 	dstDir := filepath.Join(os.TempDir(), "firmware", uuid)
 	t.Cleanup(func() { os.RemoveAll(dstDir) })
 
-	binPath, err := downloadFirmwareRelease(uuid)
+	binPath, tagName, err := downloadFirmwareRelease(uuid)
 	if err != nil {
 		t.Fatalf("downloadFirmwareRelease failed: %v", err)
+	}
+	if tagName != "firmware-pax-stable" {
+		t.Errorf("unexpected tagName: %s", tagName)
 	}
 
 	if binPath != filepath.Join(dstDir, "firmware.bin") {
@@ -135,7 +138,7 @@ func TestDownloadFirmware_DevelopChannel(t *testing.T) {
 	dstDir := filepath.Join(os.TempDir(), "firmware", uuid)
 	t.Cleanup(func() { os.RemoveAll(dstDir) })
 
-	_, err := downloadFirmwareRelease(uuid)
+	_, _, err := downloadFirmwareRelease(uuid)
 	if err != nil {
 		t.Fatalf("downloadFirmwareRelease (develop channel) failed: %v", err)
 	}
@@ -160,7 +163,7 @@ func TestDownloadFirmware_MissingAsset(t *testing.T) {
 	dstDir := filepath.Join(os.TempDir(), "firmware", uuid)
 	t.Cleanup(func() { os.RemoveAll(dstDir) })
 
-	_, err := downloadFirmwareRelease(uuid)
+	_, _, err := downloadFirmwareRelease(uuid)
 	if err == nil {
 		t.Fatal("expected error for missing firmware.bin asset, got nil")
 	}

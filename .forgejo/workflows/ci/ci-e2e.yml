@@ -59,7 +59,7 @@ jobs:
         run: |
           migrate \
             -database "$DB_DSN" \
-            -path db/migrations \
+            -path backend/Backend/migrations \
             up
 
       # ── Start services ───────────────────────────────────────────────────

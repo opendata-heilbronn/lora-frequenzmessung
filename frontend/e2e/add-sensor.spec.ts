@@ -99,6 +99,68 @@ test.describe('AddSensor wizard', () => {
     })
   })
 
+  test('full flash-and-provision flow: erase → write → reboot → provision → done', async ({ page }) => {
+    // Provision responses consumed in order: PROV_READY + one OK per key line + RESTART for COMMIT
+    await page.addInitScript(() => {
+      const responses = [
+        'PROV_READY\n',
+        'OK\n', // sensor_id
+        'OK\n', // factor
+        'OK\n', // sleep_sec
+        'OK\n', // joineui
+        'OK\n', // deveui
+        'OK\n', // appkey
+        'RESTART\n', // COMMIT
+      ]
+      let idx = 0
+      const mockPort = {
+        open: async () => {},
+        close: async () => {},
+        readable: {
+          getReader: () => ({
+            read: async () => ({ value: new TextEncoder().encode(responses[idx++] ?? 'OK\n'), done: false }),
+            releaseLock: () => {},
+          }),
+        },
+        writable: {
+          getWriter: () => ({ write: async () => {}, releaseLock: () => {} }),
+        },
+      }
+      Object.defineProperty(navigator, 'serial', {
+        value: { requestPort: async () => mockPort, getPorts: async () => [] },
+        configurable: true,
+      })
+      // Mock the esp-web-tools flash function so no real serial/esptool is needed.
+      // Fires erase → write → finished events synchronously, then returns.
+      ;(window as any).__espFlash = async (onEvent: (s: any) => void) => {
+        onEvent({ state: 'erasing', message: 'Erasing...', details: { done: false } })
+        onEvent({ state: 'writing', message: '50%', details: { bytesTotal: 100, bytesWritten: 50, percentage: 50 } })
+        onEvent({ state: 'finished', message: 'All done!' })
+      }
+      // Skip the 4-second reboot wait in tests
+      ;(window as any).__rebootWaitMs = 50
+    })
+
+    await mockCreateSensor(page)
+    await mockRegisterTTN(page)
+    await mockBuildFirmware(page)
+    await mockBuildStatus(page, 'done')
+
+    await page.goto('/add')
+    await fillAndSubmitForm(page)
+
+    // Wait for build to finish and navigate to flash stage
+    await expect(page.getByRole('button', { name: /Flash Sensor/ })).toBeVisible({ timeout: 10000 })
+    await page.getByRole('button', { name: /Flash Sensor/ }).click()
+    await expect(page.getByText('Flash & Provision Sensor')).toBeVisible()
+
+    // Click the custom flash button (not esp-web-install-button)
+    await page.getByRole('button', { name: /Connect & Flash/ }).click()
+
+    // Full chain must complete: provisioning runs after flash, then done
+    await expect(page.getByText('Device flashed and provisioned successfully!')).toBeVisible({ timeout: 10000 })
+  })
+
   test('after create, TTN registration starts automatically', async ({ page }) => {
     await mockCreateSensor(page)
 

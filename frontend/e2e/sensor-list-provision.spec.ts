@@ -63,7 +63,7 @@ test.describe('Sensor List → Rebuild panel with Flash & Configure', () => {
     await expect(page.getByRole('button', { name: 'Provision' })).not.toBeVisible()
   })
 
-  test('Flash & Configure opens FlashAndProvisionStep with esp-web-install-button', async ({ page }) => {
+  test('Flash & Configure opens FlashAndProvisionStep with custom flash button', async ({ page }) => {
     await mockSensorList(page)
     await mockBuildDone(page, SENSORS[0].uuid)
 
@@ -75,12 +75,8 @@ test.describe('Sensor List → Rebuild panel with Flash & Configure', () => {
     await expect(page.getByText('Firmware compiled successfully!')).toBeVisible({ timeout: 10000 })
     await page.getByRole('button', { name: 'Flash & Configure' }).click()
 
-    // FlashAndProvisionStep should render the flash button in idle phase
-    await expect(page.locator('esp-web-install-button')).toBeVisible()
-
-    // Correct manifest URL for this sensor
-    const manifestAttr = await page.locator('esp-web-install-button').getAttribute('manifest')
-    expect(manifestAttr).toBe(`/api/sensors/${SENSORS[0].uuid}/manifest.json`)
+    // FlashAndProvisionStep idle phase: custom flash button is shown
+    await expect(page.getByRole('button', { name: /Connect & Flash/ })).toBeVisible()
 
     // Close dismisses the panel
     await page.getByRole('button', { name: 'Close' }).click()
@@ -111,6 +107,6 @@ test.describe('Sensor List → Rebuild panel with Flash & Configure', () => {
 
     // Web Serial warning should appear instead of the flash button
     await expect(page.getByText('Web Serial not supported')).toBeVisible()
-    await expect(page.locator('esp-web-install-button')).not.toBeVisible()
+    await expect(page.getByRole('button', { name: /Connect & Flash/ })).not.toBeVisible()
   })
 })

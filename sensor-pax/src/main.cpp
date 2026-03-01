@@ -4,6 +4,8 @@
 #include "provision.h"
 #include "pax.h"
 #include "logging.h"
+#include "version.h"
+#include "downlink.h"
 
 LoRaWANNode* node;
 Config cfg;
@@ -60,9 +62,14 @@ void setup() {
     }
 
     // ── 5. Build payload ─────────────────────────────────────────
-    char payload[96];
-    snprintf(payload, sizeof(payload), "%s,0,%.4f,1,%.4f",
+    char payload[128];
+    int payloadLen = snprintf(payload, sizeof(payload), "%s,0,%.4f,1,%.4f",
              cfg.sensor_id, paxCount * cfg.factor, battPct);
+    if (reportVersion) {
+        payloadLen += snprintf(payload + payloadLen, sizeof(payload) - payloadLen,
+                               ",2,%s", FIRMWARE_VERSION);
+        reportVersion = false;
+    }
     logMessageF("Payload: %s", payload);
 
     // ── 6. Send ──────────────────────────────────────────────────
@@ -72,6 +79,7 @@ void setup() {
         (uint8_t*)payload, strlen(payload), 2, downlink, &downlinkLen);
     if (state >= 0) {
         logMessage("TX ok");
+        handleDownlink(downlink, downlinkLen);
     } else {
         logMessageF("TX error %d", state);
     }
