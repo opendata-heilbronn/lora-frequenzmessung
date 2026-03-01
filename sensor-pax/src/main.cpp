@@ -77,6 +77,7 @@ void setup() {
     size_t downlinkLen = sizeof(downlink);
     int16_t state = node->sendReceive(
         (uint8_t*)payload, strlen(payload), 2, downlink, &downlinkLen);
+    logMessageF("sendReceive state=%d downlinkLen=%d", state, (int)downlinkLen);
     if (state >= 0) {
         logMessage("TX ok");
         handleDownlink(downlink, downlinkLen);
