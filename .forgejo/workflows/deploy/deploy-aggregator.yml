@@ -6,6 +6,7 @@ on:
     branches: [main, develop]
     paths:
       - backend/Aggregator/**
+      - docker/go/Aggregator/Dockerfile
       - .forgejo/workflows/deploy/deploy-aggregator.yml
 
 jobs:

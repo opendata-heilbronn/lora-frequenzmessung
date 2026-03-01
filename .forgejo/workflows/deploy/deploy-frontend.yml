@@ -6,6 +6,7 @@ on:
     branches: [main, develop]
     paths:
       - frontend/**
+      - docker/frontend/Dockerfile
       - .forgejo/workflows/deploy/deploy-frontend.yml
 
 jobs:
