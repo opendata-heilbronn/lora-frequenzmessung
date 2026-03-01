@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
     paths:
       - backend/ManagementAPI/**
+      - docker/go/management/Dockerfile
       - .forgejo/workflows/deploy/deploy-management.yml
 
 jobs:
