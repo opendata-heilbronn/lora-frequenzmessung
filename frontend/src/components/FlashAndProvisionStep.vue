@@ -60,7 +60,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { OnyxButton, OnyxInfoCard, OnyxLoadingIndicator, OnyxInput } from 'sit-onyx'
 import 'esp-web-tools'
 
@@ -124,8 +124,11 @@ function onFlashStateChanged(e: Event) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   webSerialSupported.value = 'serial' in navigator
+  // Wait for Vue to re-render the conditional template (webSerialSupported gate)
+  // before attaching the listener — espBtnRef.value is null until the DOM updates.
+  await nextTick()
   espBtnRef.value?.addEventListener('state-changed', onFlashStateChanged)
 })
 

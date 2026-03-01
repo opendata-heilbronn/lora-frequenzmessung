@@ -99,6 +99,41 @@ test.describe('AddSensor wizard', () => {
     })
   })
 
+  test('flash FINISHED event triggers rebooting state (listener attached after nextTick)', async ({ page }) => {
+    // Inject a minimal navigator.serial stub so webSerialSupported becomes true,
+    // which causes esp-web-install-button to be rendered and the listener to be attached.
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'serial', {
+        value: { getPorts: async () => [], requestPort: async () => { throw new Error('mock') } },
+        configurable: true,
+      })
+    })
+
+    await mockCreateSensor(page)
+    await mockRegisterTTN(page)
+    await mockBuildFirmware(page)
+    await mockBuildStatus(page, 'done')
+
+    await page.goto('/add')
+    await fillAndSubmitForm(page)
+
+    // Wait for build to complete and Flash Sensor button to appear
+    await expect(page.getByRole('button', { name: /Flash Sensor/ })).toBeVisible({ timeout: 10000 })
+    await page.getByRole('button', { name: /Flash Sensor/ }).click()
+
+    await expect(page.getByText('Flash & Provision Sensor')).toBeVisible()
+
+    // Simulate the esp-web-install-button emitting FINISHED — this only works
+    // if the 'state-changed' listener was correctly attached after nextTick.
+    await page.evaluate(() => {
+      const btn = document.querySelector('esp-web-install-button')
+      btn?.dispatchEvent(new CustomEvent('state-changed', { detail: { state: 'FINISHED' } }))
+    })
+
+    // If the listener was attached, the component transitions to 'rebooting'
+    await expect(page.getByText('Flash complete! Waiting for device to reboot…')).toBeVisible()
+  })
+
   test('after create, TTN registration starts automatically', async ({ page }) => {
     await mockCreateSensor(page)
 
