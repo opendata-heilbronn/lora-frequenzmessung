@@ -1,3 +1,5 @@
+version: '3.3'
+
 services:
   db:
     image: timescale/timescaledb:latest-pg17
@@ -6,13 +8,6 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - db-storage:/var/lib/postgresql/data
-    networks: [app-net]
-    restart: unless-stopped
-
-  mosquitto:
-    image: eclipse-mosquitto
-    volumes:
-      - ./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf
     networks: [app-net]
     restart: unless-stopped
 
@@ -38,8 +33,6 @@ services:
       TTN_APP_ID: ${TTN_APP_ID}
       TTN_API_KEY: ${TTN_API_KEY}
       CORS_ORIGINS: ${CORS_ORIGINS}
-    ports:
-      - "${MANAGEMENT_PORT:-127.0.0.1:3002}:3002"
     depends_on: [backend]
     networks: [app-net]
     restart: unless-stopped
@@ -49,14 +42,14 @@ services:
   aggregator:
     image: codeberg.org/cfhn/lora-frequenzmessung/aggregator:${IMAGE_TAG}
     environment:
-      BROKER_HOST: mosquitto
-      BROKER_PORT: 1883
+      BROKER_HOST: ${BROKER_HOST}
+      BROKER_PORT: ${BROKER_PORT}
       MQTT_USERNAME: ${MQTT_USERNAME}
       MQTT_PASSWORD: ${MQTT_PASSWORD}
       TOPIC: ${TOPIC}
       BACKEND_URL: http://backend:3001
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
-    depends_on: [backend, mosquitto]
+    depends_on: [backend]
     networks: [app-net]
     restart: unless-stopped
     labels:
@@ -82,7 +75,7 @@ services:
       DOCKER_CONFIG: /config.json
       WATCHTOWER_LABEL_ENABLE: "true"
       WATCHTOWER_CLEANUP: "true"
-      WATCHTOWER_POLL_INTERVAL: "${WATCHTOWER_POLL_INTERVAL:-300}"
+      WATCHTOWER_POLL_INTERVAL: "${WATCHTOWER_POLL_INTERVAL}"
     networks: [app-net]
 
 volumes:
