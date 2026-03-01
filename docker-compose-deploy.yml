@@ -33,6 +33,7 @@ services:
       TTN_APP_ID: ${TTN_APP_ID}
       TTN_API_KEY: ${TTN_API_KEY}
       CORS_ORIGINS: ${CORS_ORIGINS}
+      FIRMWARE_CHANNEL: ${FIRMWARE_CHANNEL}
     depends_on: [backend]
     networks: [app-net]
     restart: unless-stopped
