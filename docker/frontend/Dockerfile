@@ -11,7 +11,7 @@ ARG IMAGE_VERSION=dev
 ARG GIT_SHA=unknown
 ARG RUN_NUMBER=0
 
-LABEL org.opencontainers.image.source=https://github.com/opendata-heilbronn/lora-frequenzmessung/
+LABEL org.opencontainers.image.source=https://codeberg.org/cfhn/lora-frequenzmessung
 LABEL org.opencontainers.image.description="Vue 3 management UI for the LoRa frequency measurement project."
 LABEL org.opencontainers.image.licenses=MIT
 LABEL org.opencontainers.image.revision=$GIT_SHA
