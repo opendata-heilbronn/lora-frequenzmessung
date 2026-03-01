@@ -14,7 +14,10 @@ const MOCK_SENSOR = {
 
 test.describe('AddSensor form validation', () => {
   test.beforeEach(async ({ page }) => {
-    // Block manifest requests so esp-web-tools does not make real calls
+    // Block sensor sub-resource calls (TTN, build) that fire automatically after
+    // sensor creation, to prevent 401 redirects from unmocked backend endpoints.
+    await page.route('**/api/sensors/*/**', (route) => route.abort())
+    // Manifest requests — registered after catch-all so it takes priority
     await page.route('**/api/sensors/*/manifest.json', (route) => {
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ name: 'test' }) })
     })
@@ -149,8 +152,8 @@ test.describe('AddSensor form validation', () => {
     await page.getByLabel('Longitude').fill('180')
     await page.getByRole('button', { name: /Create Sensor/ }).click()
 
-    // Should advance to step 2
-    await expect(page.getByText('Sensor Created')).toBeVisible()
+    // Should advance to setup stage
+    await expect(page.getByText('Setting Up Sensor')).toBeVisible()
     await expect(page.locator('.error-msg')).not.toBeVisible()
   })
 })

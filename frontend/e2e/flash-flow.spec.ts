@@ -67,25 +67,15 @@ test.describe('Add Sensor → Build → Flash & Provision flow (mocked)', () => 
     // Fill minimal required fields
     await page.getByLabel('Name').fill(sensorName)
 
-    // Submit create sensor
+    // Submit — TTN + build chain run automatically
     await page.getByRole('button', { name: 'Create Sensor' }).click()
 
-    // Step 2 should show UUID and name
-    await expect(page.locator('dt', { hasText: 'UUID' }).locator('..')).toContainText(sensorUUID)
-    await expect(page.locator('dt', { hasText: 'Name' }).locator('..')).toContainText(sensorName)
+    // Setup stage shows sensor UUID
+    await expect(page.getByText(sensorUUID)).toBeVisible()
 
-    // Proceed to TTN registration
-    await page.getByRole('button', { name: 'Register with TTN' }).click()
-
-    // Wait for success card then click Build Firmware
-    await expect(page.getByText('Device registered with TTN!')).toBeVisible()
-    await page.getByRole('button', { name: 'Build Firmware' }).click()
-
-    // Build phase completes (polling sees done)
-    await expect(page.getByText('Firmware compiled successfully!')).toBeVisible()
-
-    // Move to Flash step
-    await page.getByRole('button', { name: 'Flash Sensor' }).click()
+    // Flash Sensor button appears once TTN + build complete (no manual button clicks needed)
+    await expect(page.getByRole('button', { name: /Flash Sensor/ })).toBeVisible({ timeout: 10000 })
+    await page.getByRole('button', { name: /Flash Sensor/ }).click()
 
     // Assert the manifest URL on the custom element (in FlashAndProvisionStep, idle phase)
     const manifestAttr = await page.locator('esp-web-install-button').getAttribute('manifest')

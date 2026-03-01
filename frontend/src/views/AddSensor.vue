@@ -2,11 +2,8 @@
   <div>
     <OnyxHeadline is="h2">Add New Sensor</OnyxHeadline>
 
-    <!-- Step indicators -->
-    <OnyxProgressSteps :steps="progressSteps" :model-value="step" style="margin-bottom: 2rem;" />
-
-    <!-- Step 1: Details -->
-    <OnyxCard v-if="step === 1">
+    <!-- Stage 1: Form -->
+    <OnyxCard v-if="setupPhase === 'idle'">
       <OnyxHeadline is="h3">Sensor Details</OnyxHeadline>
       <form class="form-fields" @submit.prevent="createSensor">
         <OnyxInput
@@ -39,82 +36,83 @@
       </form>
     </OnyxCard>
 
-    <!-- Step 2: Created -->
-    <OnyxCard v-if="step === 2">
-      <OnyxHeadline is="h3">Sensor Created</OnyxHeadline>
-      <dl class="info-grid">
-        <div class="info-row"><dt>UUID</dt><dd><code>{{ sensor.uuid }}</code></dd></div>
-        <div class="info-row"><dt>Name</dt><dd><code>{{ sensor.name }}</code></dd></div>
-        <div class="info-row"><dt>Type</dt><dd><code>{{ sensor.type }}</code></dd></div>
-      </dl>
-      <div class="actions">
-        <OnyxButton label="Register with TTN" color="primary" @click="startTTN" />
-        <OnyxButton label="Back to sensor list" color="neutral" link="/" />
-      </div>
-    </OnyxCard>
+    <!-- Stage 2: Auto-chained setup -->
+    <OnyxCard v-else-if="setupPhase !== 'flash'">
+      <OnyxHeadline is="h3">Setting Up Sensor</OnyxHeadline>
+      <div class="setup-steps">
 
-    <!-- Step 3: TTN Registration -->
-    <OnyxCard v-if="step === 3">
-      <OnyxHeadline is="h3">TTN Registration</OnyxHeadline>
-      <div v-if="ttnRegistering" class="status-building">
-        <OnyxLoadingIndicator type="circle" />
-        <span>Registering device with The Things Network…</span>
-      </div>
-      <div v-else-if="ttnData">
-        <OnyxInfoCard color="success">Device registered with TTN!</OnyxInfoCard>
-        <dl class="info-grid" style="margin-top: 1rem;">
-          <div class="info-row">
-            <dt>DevEUI</dt>
-            <dd>
-              <code>{{ maskKey(ttnData.dev_eui) }}</code>
-              <OnyxButton label="Copy" mode="outline" color="neutral" density="compact" @click="copyToClipboard(ttnData!.dev_eui)" />
-            </dd>
+        <!-- Sensor created -->
+        <div class="setup-row">
+          <span class="step-icon step-done">✓</span>
+          <div class="step-content">
+            <span class="step-label">Sensor created — <code>{{ sensor.uuid }}</code></span>
           </div>
-          <div class="info-row">
-            <dt>AppKey</dt>
-            <dd>
-              <code>{{ maskKey(ttnData.app_key) }}</code>
-              <OnyxButton label="Copy" mode="outline" color="neutral" density="compact" @click="copyToClipboard(ttnData!.app_key)" />
-            </dd>
+        </div>
+
+        <!-- TTN registration -->
+        <div class="setup-row">
+          <span class="step-icon-wrap">
+            <OnyxLoadingIndicator v-if="ttnStatus === 'running'" type="circle" />
+            <span v-else-if="ttnStatus === 'done'" class="step-icon step-done">✓</span>
+            <span v-else-if="ttnStatus === 'error'" class="step-icon step-error">✗</span>
+            <span v-else class="step-icon step-pending">○</span>
+          </span>
+          <div class="step-content">
+            <span class="step-label" :class="{ 'step-label-muted': ttnStatus === 'skipped' }">
+              {{ ttnStatus === 'running' ? 'Registering with TTN…' : ttnStatus === 'skipped' ? 'TTN registration skipped' : 'TTN registration' }}
+            </span>
+            <div v-if="ttnStatus === 'done' && ttnData" class="ttn-keys">
+              <div class="key-row">
+                <span class="key-name">DevEUI</span>
+                <code>{{ maskKey(ttnData.dev_eui) }}</code>
+                <OnyxButton label="Copy" mode="outline" color="neutral" density="compact" @click="copyToClipboard(ttnData!.dev_eui)" />
+              </div>
+              <div class="key-row">
+                <span class="key-name">AppKey</span>
+                <code>{{ maskKey(ttnData.app_key) }}</code>
+                <OnyxButton label="Copy" mode="outline" color="neutral" density="compact" @click="copyToClipboard(ttnData!.app_key)" />
+              </div>
+            </div>
+            <div v-if="ttnStatus === 'error'" class="step-error-block">
+              <span class="step-error-msg">{{ ttnError }}</span>
+              <div class="step-retry-actions">
+                <OnyxButton label="Retry TTN" color="primary" density="compact" @click="retryTTN" />
+                <OnyxButton label="Skip TTN & build without LoRa" color="neutral" density="compact" @click="skipTTN" />
+              </div>
+            </div>
           </div>
-          <div class="info-row"><dt>TTN Device</dt><dd><code>{{ ttnData.ttn_device_id }}</code></dd></div>
-        </dl>
-      </div>
-      <div v-else-if="ttnError" class="error-msg">
-        <OnyxInfoCard color="danger">TTN registration failed: {{ ttnError }}</OnyxInfoCard>
+        </div>
+
+        <!-- Firmware build -->
+        <div class="setup-row">
+          <span class="step-icon-wrap">
+            <OnyxLoadingIndicator v-if="buildStepStatus === 'running'" type="circle" />
+            <span v-else-if="buildStepStatus === 'done'" class="step-icon step-done">✓</span>
+            <span v-else-if="buildStepStatus === 'error'" class="step-icon step-error">✗</span>
+            <span v-else class="step-icon step-pending">○</span>
+          </span>
+          <div class="step-content">
+            <span class="step-label" :class="{ 'step-label-muted': buildStepStatus === 'pending' }">
+              {{ buildStepStatus === 'running' ? 'Building firmware…' : 'Firmware build' }}
+            </span>
+            <div v-if="buildStepStatus === 'error'" class="step-error-block">
+              <span class="step-error-msg">{{ buildMessage }}</span>
+              <div class="step-retry-actions">
+                <OnyxButton label="Retry Build" color="primary" density="compact" @click="retryBuild" />
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
       <div class="actions">
-        <OnyxButton v-if="ttnData" label="Build Firmware" color="primary" @click="startBuild" />
-        <OnyxButton v-if="ttnError" label="Retry TTN" color="neutral" @click="doRegisterTTN" />
+        <OnyxButton v-if="setupPhase === 'done'" label="Flash Sensor" color="primary" @click="setupPhase = 'flash'" />
         <OnyxButton label="Back to sensor list" color="neutral" link="/" />
       </div>
     </OnyxCard>
 
-    <!-- Step 4: Build firmware -->
-    <OnyxCard v-if="step === 4">
-      <OnyxHeadline is="h3">Build Firmware</OnyxHeadline>
-      <div v-if="buildStatus === 'building'" class="status-building">
-        <OnyxLoadingIndicator type="circle" />
-        <span>Downloading firmware…</span>
-        <p class="hint">This should only take a moment.</p>
-      </div>
-      <div v-else-if="buildStatus === 'done'">
-        <OnyxInfoCard color="success">Firmware compiled successfully!</OnyxInfoCard>
-      </div>
-      <div v-else-if="buildStatus === 'error'" class="error-msg">
-        <OnyxInfoCard color="danger">Build failed: {{ buildMessage }}</OnyxInfoCard>
-      </div>
-      <div v-else class="status-idle">
-        <OnyxButton label="Start Build" color="primary" @click="startBuild" />
-      </div>
-      <div class="actions">
-        <OnyxButton v-if="buildStatus === 'done'" label="Flash Sensor" color="primary" @click="step = 5" />
-        <OnyxButton label="Back to sensor list" color="neutral" link="/" />
-      </div>
-    </OnyxCard>
-
-    <!-- Step 5: Flash & Provision -->
-    <OnyxCard v-if="step === 5">
+    <!-- Stage 3: Flash & Provision -->
+    <OnyxCard v-else>
       <OnyxHeadline is="h3">Flash & Provision Sensor</OnyxHeadline>
       <FlashAndProvisionStep
         :manifest-url="`/api/sensors/${sensor.uuid}/manifest.json`"
@@ -139,22 +137,19 @@ import {
   OnyxButton,
   OnyxLoadingIndicator,
   OnyxInfoCard,
-  OnyxProgressSteps,
 } from 'sit-onyx'
 import api from '../api'
 import axios from 'axios'
 import FlashAndProvisionStep from '../components/FlashAndProvisionStep.vue'
 import MapPicker from '../components/MapPicker.vue'
 
-const progressSteps = [
-  { label: 'Details' },
-  { label: 'Created' },
-  { label: 'TTN' },
-  { label: 'Build' },
-  { label: 'Flash & Provision' },
-]
-
-const step = ref(1)
+const setupPhase = ref<'idle' | 'ttn' | 'building' | 'done' | 'flash'>('idle')
+const ttnStatus = ref<'running' | 'done' | 'error' | 'skipped'>('running')
+const ttnError = ref('')
+const ttnData = ref<{ dev_eui: string; app_key: string; ttn_device_id: string } | null>(null)
+const buildStepStatus = ref<'pending' | 'running' | 'done' | 'error'>('pending')
+const buildMessage = ref('')
+let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const DEFAULT_LAT = 49.1438453
 const DEFAULT_LNG = 9.2147973
@@ -170,18 +165,8 @@ const mapCoords = computed({
 })
 const creating = ref(false)
 const createError = ref('')
-
 const sensor = ref({ uuid: '', name: '', type: '' })
 
-const ttnRegistering = ref(false)
-const ttnError = ref('')
-const ttnData = ref<{ dev_eui: string; app_key: string; ttn_device_id: string } | null>(null)
-
-const buildStatus = ref<'idle' | 'building' | 'done' | 'error'>('idle')
-const buildMessage = ref('')
-let pollTimer: ReturnType<typeof setInterval> | null = null
-
-// Mask a hex key, showing first 4 and last 4 chars
 function maskKey(key: string): string {
   if (key.length <= 8) return key
   return key.slice(0, 4) + '****' + key.slice(-4)
@@ -199,7 +184,6 @@ async function createSensor() {
   creating.value = true
   createError.value = ''
 
-  // Client-side validation
   const name = form.value.name.trim()
   if (!name || name.length > 64) {
     createError.value = 'Name is required and must be 1-64 characters'
@@ -219,73 +203,85 @@ async function createSensor() {
 
   try {
     const { data } = await api.post('/api/sensors', {
-      name: name,
+      name,
       latitude: form.value.latitude,
       longitude: form.value.longitude,
     })
     sensor.value = data
-    step.value = 2
+    setupPhase.value = 'ttn'
+    creating.value = false
+    await runTTN()
   } catch (e: unknown) {
     createError.value = e instanceof Error ? e.message : 'Sensor creation failed'
-  } finally {
     creating.value = false
   }
 }
 
-function startTTN() {
-  step.value = 3
-  doRegisterTTN()
-}
-
-async function doRegisterTTN() {
-  ttnRegistering.value = true
+async function runTTN() {
+  ttnStatus.value = 'running'
   ttnError.value = ''
   ttnData.value = null
   try {
     const { data } = await api.post(`/api/sensors/${sensor.value.uuid}/register-ttn`)
     ttnData.value = data
+    ttnStatus.value = 'done'
+    await runBuild()
   } catch (e: unknown) {
     if (axios.isAxiosError(e) && e.response?.data?.error) {
       ttnError.value = e.response.data.error
     } else {
       ttnError.value = e instanceof Error ? e.message : 'Registration failed'
     }
-  } finally {
-    ttnRegistering.value = false
+    ttnStatus.value = 'error'
   }
 }
 
+async function retryTTN() {
+  buildStepStatus.value = 'pending'
+  await runTTN()
+}
 
-async function startBuild() {
-  step.value = 4
-  buildStatus.value = 'building'
+async function skipTTN() {
+  ttnStatus.value = 'skipped'
+  await runBuild()
+}
+
+async function runBuild(): Promise<void> {
+  setupPhase.value = 'building'
+  buildStepStatus.value = 'running'
   try {
     await api.post(`/api/sensors/${sensor.value.uuid}/build-firmware`)
   } catch {
-    // If already building, continue polling
+    // ignore if already building
   }
-  pollBuildStatus()
+  return new Promise<void>((resolve) => {
+    if (pollTimer) clearInterval(pollTimer)
+    pollTimer = setInterval(async () => {
+      try {
+        const { data } = await api.get(`/api/sensors/${sensor.value.uuid}/build-status`)
+        if (data.status === 'done') {
+          buildStepStatus.value = 'done'
+          setupPhase.value = 'done'
+          clearInterval(pollTimer!)
+          pollTimer = null
+          resolve()
+        } else if (data.status === 'error') {
+          buildStepStatus.value = 'error'
+          buildMessage.value = data.message || 'Unknown error'
+          clearInterval(pollTimer!)
+          pollTimer = null
+          resolve()
+        }
+      } catch {
+        // ignore transient errors
+      }
+    }, 3000)
+  })
 }
 
-function pollBuildStatus() {
-  if (pollTimer) clearInterval(pollTimer)
-  pollTimer = setInterval(async () => {
-    try {
-      const { data } = await api.get(`/api/sensors/${sensor.value.uuid}/build-status`)
-      if (data.status === 'done') {
-        buildStatus.value = 'done'
-        clearInterval(pollTimer!)
-        pollTimer = null
-      } else if (data.status === 'error') {
-        buildStatus.value = 'error'
-        buildMessage.value = data.message || 'Unknown error'
-        clearInterval(pollTimer!)
-        pollTimer = null
-      }
-    } catch {
-      // ignore transient errors
-    }
-  }, 3000)
+async function retryBuild() {
+  buildMessage.value = ''
+  await runBuild()
 }
 
 onUnmounted(() => {
@@ -342,50 +338,7 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
-.info-grid {
-  border: 1px solid var(--onyx-color-base-neutral-200);
-  border-radius: var(--onyx-radius-md);
-  overflow: hidden;
-  margin: 0;
-  padding: 0;
-}
-.info-row {
-  display: flex;
-  padding: 0.65rem 1rem;
-  border-bottom: 1px solid var(--onyx-color-base-neutral-200);
-  align-items: center;
-  gap: 0.5rem;
-}
-.info-row:nth-child(even) {
-  background: var(--onyx-color-base-neutral-100);
-}
-.info-row:last-child { border-bottom: none; }
-.info-row dt {
-  width: 120px;
-  font-weight: 600;
-  color: var(--onyx-color-text-icons-neutral-medium);
-  flex-shrink: 0;
-}
-.info-row dd {
-  font-family: monospace;
-  font-size: 0.9rem;
-  word-break: break-all;
-  flex: 1;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
 .error-msg { margin-top: 0.75rem; }
-
-.status-building {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 2rem;
-  gap: 0.5rem;
-}
 
 .hint {
   color: var(--onyx-color-text-icons-neutral-soft);
@@ -393,4 +346,90 @@ onUnmounted(() => {
   margin: 0;
 }
 
+/* Setup stage */
+.setup-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 0.25rem 0;
+}
+
+.setup-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.step-icon-wrap {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.step-done { color: var(--onyx-color-base-success-500, #16a34a); }
+.step-error { color: var(--onyx-color-base-danger-500, #dc2626); }
+.step-pending { color: var(--onyx-color-text-icons-neutral-soft, #9ca3af); }
+
+.step-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.1rem;
+}
+
+.step-label {
+  font-weight: 500;
+  line-height: 1.5rem;
+}
+
+.step-label-muted {
+  color: var(--onyx-color-text-icons-neutral-soft);
+  font-weight: 400;
+}
+
+.ttn-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+}
+
+.key-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.key-name {
+  width: 60px;
+  font-weight: 600;
+  color: var(--onyx-color-text-icons-neutral-medium);
+  flex-shrink: 0;
+}
+
+.step-error-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.step-error-msg {
+  color: var(--onyx-color-base-danger-600, #b91c1c);
+  font-size: 0.875rem;
+}
+
+.step-retry-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
 </style>

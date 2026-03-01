@@ -23,13 +23,23 @@ const MOCK_TTN = {
 
 test.describe('TTN Registration', () => {
   test.beforeEach(async ({ page }) => {
+    // Block all sensor sub-resource calls not explicitly mocked in each test
+    // to prevent unmocked requests triggering 401 → /login redirect.
+    // Test-level mocks (registered after beforeEach) take priority.
+    await page.route('**/api/sensors/*/**', (route) => route.abort())
     await page.route('**/api/sensors/*/manifest.json', (route) => {
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ name: 'test' }) })
     })
   })
 
-  test('register-ttn sends POST to correct endpoint', async ({ page }) => {
-    // Track outgoing requests
+  async function fillAndCreate(page: Page) {
+    await page.getByLabel('Name').fill('ttn-test-sensor')
+    await page.getByLabel('Latitude').fill('49.14')
+    await page.getByLabel('Longitude').fill('9.21')
+    await page.getByRole('button', { name: /Create Sensor/ }).click()
+  }
+
+  test('register-ttn sends POST to correct endpoint automatically after create', async ({ page }) => {
     const apiCalls: { method: string; url: string }[] = []
 
     await page.route('**/api/sensors', (route) => {
@@ -47,15 +57,11 @@ test.describe('TTN Registration', () => {
     })
 
     await page.goto('/add')
-    await page.getByLabel('Name').fill('ttn-test-sensor')
-    await page.getByLabel('Latitude').fill('49.14')
-    await page.getByLabel('Longitude').fill('9.21')
-    await page.getByRole('button', { name: /Create Sensor/ }).click()
-    await page.getByRole('button', { name: /Register with TTN/ }).click()
+    await fillAndCreate(page)
 
-    await expect(page.getByText('Device registered with TTN')).toBeVisible()
+    // TTN fires automatically — credentials appear without any button click
+    await expect(page.getByText('0011****6677')).toBeVisible()
 
-    // Verify the register-ttn call was made
     const ttnCall = apiCalls.find(c => c.url.includes('register-ttn'))
     expect(ttnCall).toBeTruthy()
     expect(ttnCall!.method).toBe('POST')
@@ -75,28 +81,17 @@ test.describe('TTN Registration', () => {
     })
 
     await page.goto('/add')
-    await page.getByLabel('Name').fill('ttn-test-sensor')
-    await page.getByLabel('Latitude').fill('49.14')
-    await page.getByLabel('Longitude').fill('9.21')
-    await page.getByRole('button', { name: /Create Sensor/ }).click()
-    await page.getByRole('button', { name: /Register with TTN/ }).click()
+    await fillAndCreate(page)
 
-    await expect(page.getByText('Device registered with TTN')).toBeVisible()
-
-    // DevEUI should be masked: first 4 + **** + last 4
+    // DevEUI masked: first 4 + **** + last 4
     await expect(page.getByText('0011****6677')).toBeVisible()
-    // Full DevEUI should NOT be visible
     await expect(page.getByText('0011223344556677', { exact: true })).not.toBeVisible()
 
-    // AppKey should be masked
+    // AppKey masked
     await expect(page.getByText('AABB****8899')).toBeVisible()
-    // Full AppKey should NOT be visible
     await expect(page.getByText('AABBCCDDEEFF00112233445566778899', { exact: true })).not.toBeVisible()
 
-    // TTN device ID is not a secret, shown in full
-    await expect(page.getByText('sensor-aabbccdd')).toBeVisible()
-
-    // Two copy buttons (DevEUI + AppKey)
+    // Two Copy buttons (DevEUI + AppKey)
     const copyButtons = page.getByRole('button', { name: 'Copy' })
     await expect(copyButtons).toHaveCount(2)
   })
@@ -118,17 +113,10 @@ test.describe('TTN Registration', () => {
     })
 
     await page.goto('/add')
-    await page.getByLabel('Name').fill('ttn-test-sensor')
-    await page.getByLabel('Latitude').fill('49.14')
-    await page.getByLabel('Longitude').fill('9.21')
-    await page.getByRole('button', { name: /Create Sensor/ }).click()
-    await page.getByRole('button', { name: /Register with TTN/ }).click()
+    await fillAndCreate(page)
 
-    // Error should display the backend message
-    await expect(page.getByText('TTN registration failed')).toBeVisible()
-    await expect(page.getByText('NS registration')).toBeVisible()
-
-    // Retry button available (no Build button on error)
+    // Error appears automatically — no button click needed
+    await expect(page.getByText('TTN registration failed: NS registration: HTTP 500')).toBeVisible()
     await expect(page.getByRole('button', { name: /Retry TTN/ })).toBeVisible()
   })
 
@@ -145,14 +133,12 @@ test.describe('TTN Registration', () => {
     await page.route(`**/api/sensors/${SENSOR_UUID}/register-ttn`, (route) => {
       ttnCallCount++
       if (ttnCallCount === 1) {
-        // First attempt fails
         route.fulfill({
           status: 502,
           contentType: 'application/json',
           body: JSON.stringify({ error: 'TTN timeout' }),
         })
       } else {
-        // Retry succeeds
         route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -162,21 +148,15 @@ test.describe('TTN Registration', () => {
     })
 
     await page.goto('/add')
-    await page.getByLabel('Name').fill('ttn-test-sensor')
-    await page.getByLabel('Latitude').fill('49.14')
-    await page.getByLabel('Longitude').fill('9.21')
-    await page.getByRole('button', { name: /Create Sensor/ }).click()
-    await page.getByRole('button', { name: /Register with TTN/ }).click()
+    await fillAndCreate(page)
 
-    // First attempt fails
-    await expect(page.getByText('TTN registration failed')).toBeVisible()
+    // First attempt fails automatically
+    await expect(page.getByText('TTN timeout')).toBeVisible()
     expect(ttnCallCount).toBe(1)
 
-    // Click retry
+    // Click retry — second attempt succeeds
     await page.getByRole('button', { name: /Retry TTN/ }).click()
-
-    // Second attempt succeeds
-    await expect(page.getByText('Device registered with TTN')).toBeVisible()
+    await expect(page.getByText('0011****6677')).toBeVisible()
     expect(ttnCallCount).toBe(2)
   })
 
@@ -197,16 +177,13 @@ test.describe('TTN Registration', () => {
     })
 
     await page.goto('/add')
-    await page.getByLabel('Name').fill('ttn-test-sensor')
-    await page.getByLabel('Latitude').fill('49.14')
-    await page.getByLabel('Longitude').fill('9.21')
-    await page.getByRole('button', { name: /Create Sensor/ }).click()
-    await page.getByRole('button', { name: /Register with TTN/ }).click()
+    await fillAndCreate(page)
 
+    // Error appears automatically
     await expect(page.getByText('already linked to TTN')).toBeVisible()
   })
 
-  test('build firmware after TTN does not show "without LoRa" notice', async ({ page }) => {
+  test('build firmware after TTN does not require manual steps', async ({ page }) => {
     await page.route('**/api/sensors', (route) => {
       if (route.request().method() === 'POST') {
         route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_SENSOR) })
@@ -225,18 +202,13 @@ test.describe('TTN Registration', () => {
     })
 
     await page.goto('/add')
-    await page.getByLabel('Name').fill('ttn-test-sensor')
-    await page.getByLabel('Latitude').fill('49.14')
-    await page.getByLabel('Longitude').fill('9.21')
-    await page.getByRole('button', { name: /Create Sensor/ }).click()
-    await page.getByRole('button', { name: /Register with TTN/ }).click()
-    await expect(page.getByText('Device registered with TTN')).toBeVisible()
+    await fillAndCreate(page)
 
-    await page.getByRole('button', { name: /Build Firmware/ }).click()
+    // TTN + build chain runs automatically — Flash button appears with no manual interaction
+    await expect(page.getByRole('button', { name: /Flash Sensor/ })).toBeVisible({ timeout: 10000 })
 
-    // Should NOT show "without LoRa" notice since TTN was registered
+    // "without LoRa" text never shown when TTN succeeded
     await expect(page.getByText('without LoRa')).not.toBeVisible()
-    await expect(page.getByText('Firmware compiled successfully')).toBeVisible()
   })
 
   test.skip('build firmware without TTN shows "without LoRa" notice', async ({ page }) => {
@@ -255,10 +227,7 @@ test.describe('TTN Registration', () => {
     })
 
     await page.goto('/add')
-    await page.getByLabel('Name').fill('ttn-test-sensor')
-    await page.getByLabel('Latitude').fill('49.14')
-    await page.getByLabel('Longitude').fill('9.21')
-    await page.getByRole('button', { name: /Create Sensor/ }).click()
+    await fillAndCreate(page)
 
     // Skip TTN
     await page.getByRole('button', { name: /Skip TTN/ }).click()

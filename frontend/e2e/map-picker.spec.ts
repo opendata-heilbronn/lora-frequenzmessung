@@ -29,7 +29,13 @@ async function clickMap(page: Page, fx: number, fy: number) {
 
 test.describe('MapPicker', () => {
   test.beforeEach(async ({ page }) => {
-    // Suppress manifest requests so esp-web-tools doesn't make real calls
+    // Block all sensor sub-resource calls (TTN, build) that now fire automatically
+    // after sensor creation, to prevent unmocked requests reaching the backend and
+    // causing 401-triggered redirects to /login. Test-specific mocks (registered
+    // later in each test body) override this catch-all because Playwright uses
+    // last-registered-wins order.
+    await page.route('**/api/sensors/*/**', (route) => route.abort())
+    // Manifest requests — registered after catch-all so it takes priority
     await page.route('**/api/sensors/*/manifest.json', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ name: 'test' }) }),
     )
@@ -67,8 +73,8 @@ test.describe('MapPicker', () => {
     await page.getByLabel('Name').fill('map-test')
     await page.getByRole('button', { name: /Create Sensor/ }).click()
 
-    // Step 2 — map should be gone
-    await expect(page.getByText('Sensor Created')).toBeVisible()
+    // Setup stage — map should be gone
+    await expect(page.getByText('Setting Up Sensor')).toBeVisible()
     await expect(page.locator('.map-container')).not.toBeVisible()
   })
 
@@ -214,7 +220,7 @@ test.describe('MapPicker', () => {
 
     await page.getByLabel('Name').fill('map-test')
     await page.getByRole('button', { name: /Create Sensor/ }).click()
-    await expect(page.getByText('Sensor Created')).toBeVisible()
+    await expect(page.getByText('Setting Up Sensor')).toBeVisible()
 
     expect(postedLat).not.toBeNull()
     expect(postedLng).not.toBeNull()
@@ -251,7 +257,7 @@ test.describe('MapPicker', () => {
     await page.locator('form').evaluate((form: HTMLFormElement) => { form.noValidate = true })
     await page.getByRole('button', { name: /Create Sensor/ }).click()
 
-    await expect(page.getByText('Sensor Created')).toBeVisible()
+    await expect(page.getByText('Setting Up Sensor')).toBeVisible()
 
     expect(postedLat).toBeCloseTo(48.123, 3)
     expect(postedLng).toBeCloseTo(10.456, 3)
@@ -313,7 +319,7 @@ test.describe('MapPicker', () => {
 
     await page.getByLabel('Name').fill('map-test')
     await page.getByRole('button', { name: /Create Sensor/ }).click()
-    await expect(page.getByText('Sensor Created')).toBeVisible()
+    await expect(page.getByText('Setting Up Sensor')).toBeVisible()
 
     expect(postedLat).toBeCloseTo(DEFAULT_LAT, 4)
     expect(postedLng).toBeCloseTo(DEFAULT_LNG, 4)
