@@ -78,8 +78,8 @@ test.describe('Rebuild Firmware', () => {
     // Click Flash & Configure
     await page.getByRole('button', { name: 'Flash & Configure' }).click()
 
-    // FlashAndProvisionStep should appear with flash button in idle phase
-    await expect(page.locator('esp-web-install-button')).toBeVisible()
+    // FlashAndProvisionStep should appear with the custom flash button in idle phase
+    await expect(page.getByRole('button', { name: /Connect & Flash/ })).toBeVisible()
 
     // Close dismisses panel
     await page.getByRole('button', { name: 'Close' }).click()
