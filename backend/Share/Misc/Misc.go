@@ -8,8 +8,8 @@ import (
 )
 
 type config struct {
-	BrokenHost    string `env:"BROKEN_HOST"`
-	BrokenPort    string `env:"BROKEN_PORT"`
+	BrokenHost    string `env:"BROKER_HOST"`
+	BrokenPort    string `env:"BROKER_PORT"`
 	ClientID      string `env:"CLIENTID"`
 	Topic         string `env:"TOPIC"`
 	MQTT_username string `env:"MQTT_USERNAME"`
