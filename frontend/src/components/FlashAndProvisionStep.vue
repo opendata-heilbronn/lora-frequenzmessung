@@ -69,6 +69,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { OnyxButton, OnyxInfoCard, OnyxLoadingIndicator, OnyxInput } from 'sit-onyx'
 import { flash as espFlashImpl } from 'esp-web-tools/dist/flash.js'
+import api from '../api'
 
 const props = defineProps<{
   manifestUrl: string
@@ -207,6 +208,17 @@ async function doProvision(port: any) {
     provLog.value += 'Waiting for PROV_READY...\n'
     await readUntil('PROV_READY', 15000)
 
+    // Fetch WiFi credentials from server (optional — skip if not configured)
+    let wifiSsid = ''
+    let wifiPassword = ''
+    try {
+      const cfg = await api.get<{ wifi_ssid: string; wifi_password: string }>('/api/provision-config')
+      wifiSsid = cfg.data.wifi_ssid ?? ''
+      wifiPassword = cfg.data.wifi_password ?? ''
+    } catch {
+      // Non-fatal — proceed without WiFi credentials
+    }
+
     const lines = [
       `sensor_id=${props.sensorUuid}`,
       `factor=${factor.value}`,
@@ -214,6 +226,8 @@ async function doProvision(port: any) {
       `joineui=${props.joinEui}`,
       `deveui=${props.devEui}`,
       `appkey=${props.appKey}`,
+      ...(wifiSsid     ? [`wifi_ssid=${wifiSsid}`]         : []),
+      ...(wifiPassword ? [`wifi_password=${wifiPassword}`] : []),
     ]
 
     for (const ln of lines) {

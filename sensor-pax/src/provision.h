@@ -9,11 +9,15 @@
 #define KEY_SENSOR_ID      "sensor_id"   // ≤15 chars NVS key
 #define KEY_FACTOR         "factor"
 #define KEY_SLEEP_TIME     "sleep_sec"
+#define KEY_WIFI_SSID      "wifi_ssid"
+#define KEY_WIFI_PWD       "wifi_pwd"
 
 struct Config {
     char    sensor_id[16];
     float   factor;
     int32_t sleep_time_sec;
+    char    wifi_ssid[64];
+    char    wifi_password[64];
 };
 
 // Convert a 16-char hex string to uint64_t. Returns false on invalid input.
@@ -70,6 +74,8 @@ inline Config loadConfig() {
     p.getString(KEY_SENSOR_ID, cfg.sensor_id, sizeof(cfg.sensor_id));
     cfg.factor         = p.getFloat(KEY_FACTOR, 0.7f);
     cfg.sleep_time_sec = p.getInt(KEY_SLEEP_TIME, 900);
+    p.getString(KEY_WIFI_SSID, cfg.wifi_ssid, sizeof(cfg.wifi_ssid));
+    p.getString(KEY_WIFI_PWD, cfg.wifi_password, sizeof(cfg.wifi_password));
     p.end();
     return cfg;
 }
@@ -88,6 +94,8 @@ inline void waitForProvisioning() {
     char    v_joineui[17]   = {};
     char    v_deveui[17]    = {};
     char    v_appkey[33]    = {};
+    char    v_wifi_ssid[64]     = {};
+    char    v_wifi_password[64] = {};
     float   v_factor        = 0.0f;
     int32_t v_sleep_sec     = 0;
     bool    has_sensor_id   = false;
@@ -141,6 +149,8 @@ inline void waitForProvisioning() {
                 prefs.putString(KEY_SENSOR_ID, v_sensor_id);
                 prefs.putFloat(KEY_FACTOR, v_factor);
                 prefs.putInt(KEY_SLEEP_TIME, v_sleep_sec);
+                if (v_wifi_ssid[0])     prefs.putString(KEY_WIFI_SSID, v_wifi_ssid);
+                if (v_wifi_password[0]) prefs.putString(KEY_WIFI_PWD, v_wifi_password);
                 prefs.end();
 
                 // Write LoRaWAN credentials
@@ -212,6 +222,24 @@ inline void waitForProvisioning() {
                 strncpy(v_appkey, val, sizeof(v_appkey) - 1);
                 v_appkey[sizeof(v_appkey)-1] = '\0';
                 has_appkey = true;
+                Serial.println("OK");
+            }
+        } else if (strcmp(key, "wifi_ssid") == 0) {
+            size_t valLen = strlen(val);
+            if (valLen >= sizeof(v_wifi_ssid)) {
+                Serial.println("ERROR: wifi_ssid too long");
+            } else {
+                strncpy(v_wifi_ssid, val, sizeof(v_wifi_ssid) - 1);
+                v_wifi_ssid[sizeof(v_wifi_ssid)-1] = '\0';
+                Serial.println("OK");
+            }
+        } else if (strcmp(key, "wifi_password") == 0) {
+            size_t valLen = strlen(val);
+            if (valLen >= sizeof(v_wifi_password)) {
+                Serial.println("ERROR: wifi_password too long");
+            } else {
+                strncpy(v_wifi_password, val, sizeof(v_wifi_password) - 1);
+                v_wifi_password[sizeof(v_wifi_password)-1] = '\0';
                 Serial.println("OK");
             }
         } else {

@@ -97,6 +97,10 @@ test.describe('AddSensor wizard', () => {
     await page.route('**/api/sensors/*/manifest.json', (route) => {
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ name: 'test' }) })
     })
+    // Mock provision-config so FlashAndProvisionStep doesn't hit the real backend
+    await page.route('**/api/provision-config', (route) => {
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ wifi_ssid: '', wifi_password: '' }) })
+    })
   })
 
   test('full flash-and-provision flow: erase → write → reboot → provision → done', async ({ page }) => {

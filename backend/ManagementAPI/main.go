@@ -93,6 +93,8 @@ func main() {
 	api.Get("/sensors/:uuid/build-status", getBuildStatusHandler)
 	api.Post("/sensors/:uuid/request-version", requestVersionHandler)
 	api.Post("/sensors/request-all-versions", requestAllVersionsHandler)
+	api.Get("/provision-config", getProvisionConfigHandler)
+	api.Post("/sensors/:uuid/trigger-ota", triggerOTAHandler)
 
 	// Graceful shutdown
 	go func() {

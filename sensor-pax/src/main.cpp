@@ -6,6 +6,7 @@
 #include "logging.h"
 #include "version.h"
 #include "downlink.h"
+#include "ota.h"
 
 LoRaWANNode* node;
 Config cfg;
@@ -26,6 +27,14 @@ void setup() {
         while (true) delay(1000);  // reboots on success; never reached
     }
     cfg = loadConfig();
+
+    // ── OTA: check if a WiFi OTA update was requested via downlink ────────
+    if (doOTA && otaTag[0] != '\0') {
+        doOTA = false;  // clear — if OTA fails, don't retry forever
+        logMessageF("OTA triggered, tag=%s", otaTag);
+        performWiFiOTA(cfg.wifi_ssid, cfg.wifi_password, otaTag);
+        // falls through to normal uplink cycle if OTA fails
+    }
 
     // ── 1. Battery (read BEFORE BLE to avoid radio interference) ─
     pinMode(VBAT_CTRL, OUTPUT);

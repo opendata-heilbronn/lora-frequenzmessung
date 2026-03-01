@@ -12,7 +12,7 @@ import (
 // Downlink command IDs sent to sensors via TTN.
 const (
 	CmdRequestVersion byte = 0x01
-	// Future: CmdOTAUpdate byte = 0x02
+	CmdOTAUpdate      byte = 0x02
 )
 
 // sendDownlink schedules a downlink message to a TTN device via the AS push endpoint.
