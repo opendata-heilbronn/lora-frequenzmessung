@@ -15,7 +15,7 @@ infra-down: ## Stop infrastructure containers
 	docker compose down
 
 migrate: ## Run DB migrations against local TimescaleDB (reads DB_DSN from backend/.env)
-	$(LOAD_ENV) && migrate -database "$$DB_DSN" -path db/migrations up
+	$(LOAD_ENV) && migrate -database "$$DB_DSN" -path backend/Backend/migrations up
 
 # ── Backend services ──────────────────────────────────────────────────────────
 
