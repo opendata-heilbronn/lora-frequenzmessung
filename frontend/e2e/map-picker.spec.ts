@@ -257,6 +257,38 @@ test.describe('MapPicker', () => {
     expect(postedLng).toBeCloseTo(10.456, 3)
   })
 
+  // ── Locate me ─────────────────────────────────────────────────────────────
+
+  test('locate me button is rendered on the map', async ({ page }) => {
+    await page.goto('/add')
+    await waitForMap(page)
+    await expect(page.getByRole('button', { name: /current location/i })).toBeVisible()
+  })
+
+  test('clicking locate me button updates coordinates to GPS location', async ({ page, context }) => {
+    const GPS_LAT = 48.1234
+    const GPS_LNG = 11.5678
+
+    await context.grantPermissions(['geolocation'])
+    await context.setGeolocation({ latitude: GPS_LAT, longitude: GPS_LNG })
+
+    await page.goto('/add')
+    await waitForMap(page)
+
+    const latBefore = await page.getByLabel('Latitude').inputValue()
+
+    await page.getByRole('button', { name: /current location/i }).click()
+
+    // Wait for the coordinate inputs to reflect the GPS position
+    await expect(page.getByLabel('Latitude')).not.toHaveValue(latBefore)
+
+    const lat = Number(await page.getByLabel('Latitude').inputValue())
+    const lng = Number(await page.getByLabel('Longitude').inputValue())
+
+    expect(lat).toBeCloseTo(GPS_LAT, 3)
+    expect(lng).toBeCloseTo(GPS_LNG, 3)
+  })
+
   test('default Heilbronn coordinates are sent when neither map nor inputs are changed', async ({ page }) => {
     let postedLat: number | null = null
     let postedLng: number | null = null
