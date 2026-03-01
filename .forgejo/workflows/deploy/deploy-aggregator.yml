@@ -6,6 +6,11 @@ on:
     branches: [main, develop]
     paths:
       - backend/Aggregator/**
+      - backend/Share/**
+      - backend/structs/**
+      - backend/internal/**
+      - backend/go.mod
+      - backend/go.sum
       - docker/go/Aggregator/Dockerfile
       - .forgejo/workflows/deploy/deploy-aggregator.yml
 
