@@ -1,3 +1,5 @@
+version: '3.3'
+
 services:
   db:
     image: timescale/timescaledb:latest-pg17
@@ -9,24 +11,19 @@ services:
     networks: [app-net]
     restart: unless-stopped
 
-  mosquitto:
-    image: eclipse-mosquitto
-    volumes:
-      - ./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf
-    networks: [app-net]
-    restart: unless-stopped
-
   backend:
-    image: codeberg.org/opendata-heilbronn/backend:${TAG}
+    image: codeberg.org/cfhn/lora-frequenzmessung/backend:${IMAGE_TAG}
     environment:
       DB_DSN: postgres://timescaledb:${POSTGRES_PASSWORD}@db:5432/postgres?sslmode=disable
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
     depends_on: [db]
     networks: [app-net]
     restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
 
   management:
-    image: codeberg.org/opendata-heilbronn/management:${TAG}
+    image: codeberg.org/cfhn/lora-frequenzmessung/management:${IMAGE_TAG}
     environment:
       BACKEND_INTERNAL_URL: http://backend:3001
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
@@ -39,31 +36,55 @@ services:
     depends_on: [backend]
     networks: [app-net]
     restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
 
   aggregator:
-    image: codeberg.org/opendata-heilbronn/aggregator:${TAG}
+    image: codeberg.org/cfhn/lora-frequenzmessung/aggregator:${IMAGE_TAG}
     environment:
-      BROKER_HOST: mosquitto
-      BROKER_PORT: 1883
+      BROKER_HOST: ${BROKER_HOST}
+      BROKER_PORT: ${BROKER_PORT}
+      CLIENTID: ${CLIENTID}
       MQTT_USERNAME: ${MQTT_USERNAME}
       MQTT_PASSWORD: ${MQTT_PASSWORD}
       TOPIC: ${TOPIC}
       BACKEND_URL: http://backend:3001
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
-    depends_on: [backend, mosquitto]
+    depends_on: [backend]
     networks: [app-net]
     restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
 
   frontend:
-    image: codeberg.org/opendata-heilbronn/frontend:${TAG}
-    ports:
-      - "${FRONTEND_PORT}:80"
+    image: codeberg.org/cfhn/lora-frequenzmessung/frontend:${IMAGE_TAG}
     depends_on: [management]
-    networks: [app-net]
+    networks: [app-net, traefik_net]
     restart: unless-stopped
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+      traefik.enable: "true"
+      traefik.docker.network: "traefik_net"
+      traefik.port: "80"
+      traefik.frontend.rule: "Host: ${HOSTNAME}"
+
+  watchtower:
+    image: containrrr/watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /root/.docker/config.json:/config.json:ro
+    environment:
+      DOCKER_CONFIG: /config.json
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_POLL_INTERVAL: "${WATCHTOWER_POLL_INTERVAL}"
+    networks: [app-net]
 
 volumes:
   db-storage:
 
 networks:
   app-net:
+  traefik_net:
+    external: true

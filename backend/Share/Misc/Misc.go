@@ -8,8 +8,8 @@ import (
 )
 
 type config struct {
-	BrokenHost    string `env:"BROKEN_HOST"`
-	BrokenPort    string `env:"BROKEN_PORT"`
+	BrokerHost    string `env:"BROKER_HOST"`
+	BrokerPort    string `env:"BROKER_PORT"`
 	ClientID      string `env:"CLIENTID"`
 	Topic         string `env:"TOPIC"`
 	MQTT_username string `env:"MQTT_USERNAME"`
@@ -17,8 +17,7 @@ type config struct {
 	DBdsn         string `env:"DB_DSN"`
 }
 type backendURL struct {
-	BACKEND_URL   string `env:"BACKEND_URL"`
-	MQTT_PASSWORD string `env:"MQTT_PASSWORD"`
+	BACKEND_URL string `env:"BACKEND_URL"`
 }
 
 func GetBackendURL() string {
@@ -60,7 +59,7 @@ func SetupVars() (string, string, string, string, string, string) {
 	if err != nil {
 		panic(err)
 	}
-	broker := fmt.Sprintf("tcp://%s:%s", cfg.BrokenHost, cfg.BrokenPort)
+	broker := fmt.Sprintf("tcp://%s:%s", cfg.BrokerHost, cfg.BrokerPort)
 	clientID := cfg.ClientID
 	topic := cfg.Topic
 	username := cfg.MQTT_username

@@ -24,8 +24,8 @@ func TestGetBackendURL(t *testing.T) {
 }
 
 func TestSetupVars(t *testing.T) {
-	t.Setenv("BROKEN_HOST", "localhost")
-	t.Setenv("BROKEN_PORT", "1883")
+	t.Setenv("BROKER_HOST", "localhost")
+	t.Setenv("BROKER_PORT", "1883")
 	t.Setenv("CLIENTID", "clientID")
 	t.Setenv("TOPIC", "topic")
 	t.Setenv("MQTT_USERNAME", "username")

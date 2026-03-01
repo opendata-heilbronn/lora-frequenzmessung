@@ -70,7 +70,7 @@ test.describe('Rebuild Firmware', () => {
     await row.getByRole('button', { name: 'Rebuild' }).click()
 
     // Should show building state
-    await expect(page.getByText('Compiling firmware with PlatformIO…')).toBeVisible()
+    await expect(page.getByText('Downloading firmware…')).toBeVisible()
 
     // Wait for "done" state
     await expect(page.getByText('Firmware compiled successfully!')).toBeVisible({ timeout: 10000 })
@@ -138,10 +138,10 @@ test.describe('Rebuild Firmware', () => {
     await row.getByRole('button', { name: 'Rebuild' }).click()
 
     // Should show building state
-    await expect(page.getByText('Compiling firmware with PlatformIO…')).toBeVisible()
+    await expect(page.getByText('Downloading firmware…')).toBeVisible()
 
     // Close dismisses panel
     await page.getByRole('button', { name: 'Close' }).click()
-    await expect(page.getByText('Compiling firmware with PlatformIO…')).not.toBeVisible()
+    await expect(page.getByText('Downloading firmware…')).not.toBeVisible()
   })
 })

@@ -3,11 +3,16 @@ name: Deploy go-aggregator to codeberg.org
 on:
   workflow_dispatch: ~
   push:
-    branches:
-      - main
+    branches: [main, develop]
     paths:
       - backend/Aggregator/**
-      - .forgejo/workflows/deploy-aggregator.yml
+      - backend/Share/**
+      - backend/structs/**
+      - backend/internal/**
+      - backend/go.mod
+      - backend/go.sum
+      - docker/go/Aggregator/Dockerfile
+      - .forgejo/workflows/deploy/deploy-aggregator.yml
 
 jobs:
   docker:
@@ -16,17 +21,46 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install Docker
+        run: |
+          apt-get update
+          apt-get install -y ca-certificates curl gnupg
+          install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+          chmod a+r /etc/apt/keyrings/docker.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
+          apt-get update
+          apt-get install -y docker-ce-cli iproute2
+          GATEWAY=$(ip route | awk '/default/ {print $3}')
+          echo "DOCKER_HOST=tcp://${GATEWAY}:2375" >> "$GITHUB_ENV"
+
       - name: Login to Codeberg Container Registry
-        run: echo "${{ secrets.FORGEJO_TOKEN }}" | docker login codeberg.org -u "${{ gitea.actor }}" --password-stdin
+        run: echo "${{ secrets.FORGEJO_TOKEN }}" | docker login codeberg.org -u "${{ secrets.REGISTRY_USER }}" --password-stdin
+
+      - name: Compute image tag
+        id: tag
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "primary=latest"       >> "$GITHUB_OUTPUT"
+            echo "push_secondary=true"  >> "$GITHUB_OUTPUT"
+          else
+            echo "primary=develop"      >> "$GITHUB_OUTPUT"
+            echo "push_secondary=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build Docker image
         run: |
           docker build \
-            -t codeberg.org/opendata-heilbronn/aggregator:latest \
-            -t codeberg.org/opendata-heilbronn/aggregator:${{ github.run_number }} \
+            --build-arg IMAGE_VERSION="${{ steps.tag.outputs.primary }}-${{ github.sha }}" \
+            --build-arg GIT_SHA="${{ github.sha }}" \
+            --build-arg RUN_NUMBER="${{ github.run_number }}" \
+            -t codeberg.org/cfhn/lora-frequenzmessung/aggregator:${{ steps.tag.outputs.primary }} \
+            -t codeberg.org/cfhn/lora-frequenzmessung/aggregator:v${{ github.run_number }} \
             -f docker/go/Aggregator/Dockerfile .
 
       - name: Push Docker image
         run: |
-          docker push codeberg.org/opendata-heilbronn/aggregator:latest
-          docker push codeberg.org/opendata-heilbronn/aggregator:${{ github.run_number }}
+          docker push codeberg.org/cfhn/lora-frequenzmessung/aggregator:${{ steps.tag.outputs.primary }}
+          if [ "${{ steps.tag.outputs.push_secondary }}" = "true" ]; then
+            docker push codeberg.org/cfhn/lora-frequenzmessung/aggregator:v${{ github.run_number }}
+          fi

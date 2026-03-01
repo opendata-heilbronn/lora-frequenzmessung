@@ -95,8 +95,8 @@
       <OnyxHeadline is="h3">Build Firmware</OnyxHeadline>
       <div v-if="buildStatus === 'building'" class="status-building">
         <OnyxLoadingIndicator type="circle" />
-        <span>Compiling firmware with PlatformIO…</span>
-        <p class="hint">This typically takes 30–60 seconds.</p>
+        <span>Downloading firmware…</span>
+        <p class="hint">This should only take a moment.</p>
       </div>
       <div v-else-if="buildStatus === 'done'">
         <OnyxInfoCard color="success">Firmware compiled successfully!</OnyxInfoCard>
