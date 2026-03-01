@@ -106,6 +106,26 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			shift += 2
 			continue
 		}
+
+		// type 2 = firmware version string (not a float — handle separately)
+		if typeID == 2 {
+			version := stringSlice[shift+1]
+			shift += 2
+			found := false
+			for _, c := range clients {
+				if c.UUID == sensoreID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				log.Printf("WARN: unknown sensor %q, skipping version update", sensoreID)
+				continue
+			}
+			patchFirmwareVersion(sensoreID, version)
+			continue
+		}
+
 		value, err := strconv.ParseFloat(stringSlice[shift+1], 64)
 		if err != nil {
 			log.Printf("ERROR: invalid value %q: %v", stringSlice[shift+1], err)
@@ -152,6 +172,18 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 		if err != nil {
 			log.Printf("ERROR: failed to send data to backend: %v", err)
 		}
+	}
+}
+
+func patchFirmwareVersion(uuid, version string) {
+	body := fmt.Sprintf(`{"version":%q}`, version)
+	_, err := resty.New().R().
+		SetHeader("X-Internal-Key", Misc2.GetInternalAPIKey()).
+		SetHeader("Content-Type", "application/json").
+		SetBody(body).
+		Patch(fmt.Sprintf("%s/internal/sensors/%s/firmware-version", Misc2.GetBackendURL(), uuid))
+	if err != nil {
+		log.Printf("ERROR: failed to patch firmware version for %s: %v", uuid, err)
 	}
 }
 

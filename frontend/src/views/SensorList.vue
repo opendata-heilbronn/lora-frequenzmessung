@@ -13,6 +13,9 @@
       <div v-if="pageError" class="page-error">
         <OnyxInfoCard color="danger">{{ pageError }}</OnyxInfoCard>
       </div>
+      <div v-if="pageSuccess" class="page-success">
+        <OnyxInfoCard color="success">{{ pageSuccess }}</OnyxInfoCard>
+      </div>
 
       <div v-if="sensors.length" class="table-wrapper">
         <OnyxTable>
@@ -20,6 +23,7 @@
             <OnyxHeadline is="h2">Registered Sensors</OnyxHeadline>
           </template>
           <template #actions>
+            <OnyxButton label="Refresh All Versions" color="neutral" mode="outline" @click="requestAllVersions" />
             <OnyxButton label="Refresh" color="primary" @click="refresh" />
           </template>
           <template #head>
@@ -31,6 +35,7 @@
               <th>TTN</th>
               <th>Last Data</th>
               <th>Battery</th>
+              <th>Firmware</th>
               <th>Added</th>
               <th></th>
             </tr>
@@ -84,6 +89,21 @@
                 >{{ Math.round(s.last_battery_value!) }}%</OnyxBadge>
                 <span v-else class="battery-unknown">—</span>
               </td>
+              <td>
+                <div class="actions-cell">
+                  <OnyxBadge
+                    :class="['firmware-badge']"
+                    color="neutral"
+                    :title="s.firmware_version_time ? `Reported: ${formatDate(s.firmware_version_time)}` : undefined"
+                  >{{ s.firmware_version ?? 'Unknown' }}</OnyxBadge>
+                  <button
+                    class="version-refresh-btn"
+                    :title="'Request version update'"
+                    :disabled="versionRequestUUID === s.uuid"
+                    @click="requestVersion(s.uuid)"
+                  >↻</button>
+                </div>
+              </td>
               <td>{{ formatDate(s.created_at) }}</td>
               <td>
                 <div class="actions-cell">
@@ -113,12 +133,12 @@
               </td>
             </tr>
             <tr v-if="mapUUID === s.uuid" class="map-row">
-              <td colspan="9" class="map-cell">
+              <td colspan="10" class="map-cell">
                 <SensorMap :lat="s.latitude" :lng="s.longitude" :name="s.name" />
               </td>
             </tr>
             <tr v-if="ttnInfoUUID === s.uuid" class="ttn-info-row">
-              <td colspan="9">
+              <td colspan="10">
                 <div class="ttn-info-panel">
                   <div class="ttn-info-grid">
                     <div class="ttn-info-item">
@@ -138,7 +158,7 @@
               </td>
             </tr>
             <tr v-if="rebuildUUID === s.uuid" class="rebuild-row">
-              <td colspan="9">
+              <td colspan="10">
                 <div class="rebuild-panel">
                   <!-- Building -->
                   <div v-if="rebuildStatus === 'building'" class="rebuild-building">
@@ -221,12 +241,15 @@ interface Sensor {
   last_battery_value: number | null
   last_battery_time: string | null
   last_data_time: string | null
+  firmware_version: string | null
+  firmware_version_time: string | null
 }
 
 const sensors = ref<Sensor[]>([])
 const loading = ref(false)
 const loadError = ref(false)
 const linkingUUID = ref('')
+const versionRequestUUID = ref('')
 
 // Inline delete confirmation
 const deleteConfirmUUID = ref('')
@@ -239,6 +262,16 @@ function showError(msg: string) {
   pageError.value = msg
   if (errorTimer) clearTimeout(errorTimer)
   errorTimer = setTimeout(() => { pageError.value = '' }, 6000)
+}
+
+// Page-level success toast — auto-clears after 4s
+const pageSuccess = ref('')
+let successTimer: ReturnType<typeof setTimeout> | null = null
+
+function showSuccess(msg: string) {
+  pageSuccess.value = msg
+  if (successTimer) clearTimeout(successTimer)
+  successTimer = setTimeout(() => { pageSuccess.value = '' }, 4000)
 }
 
 const ttnInfoUUID = ref('')
@@ -298,6 +331,33 @@ async function confirmDelete(s: Sensor) {
     sensors.value = sensors.value.filter(x => x.uuid !== s.uuid)
   } catch (e: unknown) {
     showError(e instanceof Error ? e.message : 'Delete failed')
+  }
+}
+
+async function requestVersion(uuid: string) {
+  versionRequestUUID.value = uuid
+  try {
+    await api.post(`/api/sensors/${uuid}/request-version`)
+    showSuccess('Version request queued — sensor will report on next wake')
+  } catch (e: unknown) {
+    const msg = axios.isAxiosError(e) && e.response?.data?.error
+      ? e.response.data.error
+      : 'Version request failed'
+    showError(msg)
+  } finally {
+    versionRequestUUID.value = ''
+  }
+}
+
+async function requestAllVersions() {
+  try {
+    await api.post('/api/sensors/request-all-versions')
+    showSuccess('Version request queued for all linked sensors')
+  } catch (e: unknown) {
+    const msg = axios.isAxiosError(e) && e.response?.data?.error
+      ? e.response.data.error
+      : 'Bulk version request failed'
+    showError(msg)
   }
 }
 
@@ -400,6 +460,10 @@ onUnmounted(() => {
     clearTimeout(errorTimer)
     errorTimer = null
   }
+  if (successTimer) {
+    clearTimeout(successTimer)
+    successTimer = null
+  }
 })
 </script>
 
@@ -417,6 +481,22 @@ onUnmounted(() => {
 .page-error {
   margin-bottom: 1rem;
 }
+
+.page-success {
+  margin-bottom: 1rem;
+}
+
+.version-refresh-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  color: var(--onyx-color-base-primary-500);
+  padding: 0 0.25rem;
+  line-height: 1;
+}
+.version-refresh-btn:hover { opacity: 0.7; }
+.version-refresh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .table-wrapper {
   overflow-x: auto;

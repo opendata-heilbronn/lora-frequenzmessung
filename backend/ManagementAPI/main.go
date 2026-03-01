@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -17,6 +18,15 @@ import (
 var uuidRegex = regexp.MustCompile(`^[0-9a-f]{8}$`)
 
 func main() {
+	// Start scheduled firmware version polling
+	intervalHours := 24
+	if v := os.Getenv("VERSION_CHECK_INTERVAL_HOURS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			intervalHours = n
+		}
+	}
+	StartVersionCheckScheduler(time.Duration(intervalHours) * time.Hour)
+
 	app := fiber.New()
 
 	// CORS — read allowed origins from env, with sensible defaults
@@ -81,6 +91,8 @@ func main() {
 	api.Post("/sensors/:uuid/register-ttn", registerTTNHandler)
 	api.Post("/sensors/:uuid/build-firmware", buildFirmwareHandler)
 	api.Get("/sensors/:uuid/build-status", getBuildStatusHandler)
+	api.Post("/sensors/:uuid/request-version", requestVersionHandler)
+	api.Post("/sensors/request-all-versions", requestAllVersionsHandler)
 
 	// Graceful shutdown
 	go func() {

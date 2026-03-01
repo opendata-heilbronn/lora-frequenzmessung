@@ -13,19 +13,21 @@ import (
 )
 
 type Sensor struct {
-	ID               int        `json:"id"`
-	UUID             string     `json:"uuid"`
-	Name             string     `json:"name"`
-	Longitude        float64    `json:"longitude"`
-	Latitude         float64    `json:"latitude"`
-	Type             string     `json:"type"`
-	DevEUI           string     `json:"dev_eui"`
-	AppKey           string     `json:"app_key"`
-	TtnDeviceID      string     `json:"ttn_device_id"`
-	CreatedAt        time.Time  `json:"created_at"`
-	LastBatteryValue *float64   `json:"last_battery_value"`
-	LastBatteryTime  *time.Time `json:"last_battery_time"`
-	LastDataTime     *time.Time `json:"last_data_time"`
+	ID                  int        `json:"id"`
+	UUID                string     `json:"uuid"`
+	Name                string     `json:"name"`
+	Longitude           float64    `json:"longitude"`
+	Latitude            float64    `json:"latitude"`
+	Type                string     `json:"type"`
+	DevEUI              string     `json:"dev_eui"`
+	AppKey              string     `json:"app_key"`
+	TtnDeviceID         string     `json:"ttn_device_id"`
+	CreatedAt           time.Time  `json:"created_at"`
+	LastBatteryValue    *float64   `json:"last_battery_value"`
+	LastBatteryTime     *time.Time `json:"last_battery_time"`
+	LastDataTime        *time.Time `json:"last_data_time"`
+	FirmwareVersion     *string    `json:"firmware_version"`
+	FirmwareVersionTime *time.Time `json:"firmware_version_time"`
 }
 
 type CreateSensorRequest struct {
@@ -47,7 +49,8 @@ func getSensors(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
 			       COALESCE(s.dev_eui,''), COALESCE(s.app_key,''),
 			       COALESCE(s.ttn_device_id,''), s.created_at,
 			       batt.value, batt.time,
-			       last.time
+			       last.time,
+			       s.firmware_version, s.firmware_version_time
 			FROM sensors s
 			LEFT JOIN LATERAL (
 			    SELECT value, time
@@ -74,7 +77,8 @@ func getSensors(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
 			var s Sensor
 			err := rows.Scan(&s.ID, &s.UUID, &s.Name, &s.Longitude, &s.Latitude,
 				&s.Type, &s.DevEUI, &s.AppKey, &s.TtnDeviceID, &s.CreatedAt,
-				&s.LastBatteryValue, &s.LastBatteryTime, &s.LastDataTime)
+				&s.LastBatteryValue, &s.LastBatteryTime, &s.LastDataTime,
+				&s.FirmwareVersion, &s.FirmwareVersionTime)
 			if err != nil {
 				return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 			}
@@ -172,6 +176,37 @@ func deleteSensor(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
 		}
 
 		return c.Status(204).SendString("")
+	}
+}
+
+func updateFirmwareVersion(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		uuid, err := validateUUID(c)
+		if err != nil {
+			return err
+		}
+
+		var req struct {
+			Version string `json:"version"`
+		}
+		if err := c.Bind().JSON(&req); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		}
+		if req.Version == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "version is required"})
+		}
+
+		tag, err := pool.Exec(ctx,
+			`UPDATE sensors SET firmware_version = $1, firmware_version_time = NOW() WHERE uuid = $2`,
+			req.Version, uuid)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+		if tag.RowsAffected() == 0 {
+			return c.Status(404).JSON(fiber.Map{"error": "sensor not found"})
+		}
+
+		return c.JSON(fiber.Map{"firmware_version": req.Version})
 	}
 }
 

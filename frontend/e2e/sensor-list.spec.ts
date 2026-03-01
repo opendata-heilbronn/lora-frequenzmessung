@@ -301,7 +301,7 @@ test.describe('SensorList', () => {
     await expect(page.locator('tr', { hasText: 'sensor-unlinked' })).not.toBeVisible()
 
     // Click refresh — second GET returns both sensors
-    await page.getByRole('button', { name: 'Refresh' }).click()
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click()
 
     await expect(page.locator('tr', { hasText: 'sensor-unlinked' })).toBeVisible()
   })

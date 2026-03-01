@@ -18,6 +18,7 @@ type buildState struct {
 	Status  string `json:"status"` // "building" | "done" | "error"
 	Message string `json:"message,omitempty"`
 	BinPath string `json:"-"` // path to firmware.bin in output dir
+	TagName string `json:"tag_name,omitempty"`
 }
 
 var buildStatuses sync.Map // key: uuid → *buildState
@@ -57,7 +58,7 @@ func buildFirmwareHandler(c fiber.Ctx) error {
 	buildStatuses.Store(uuid, state)
 
 	go func() {
-		binPath, err := downloadFirmwareRelease(uuid)
+		binPath, tagName, err := downloadFirmwareRelease(uuid)
 		state.mu.Lock()
 		defer state.mu.Unlock()
 		if err != nil {
@@ -67,6 +68,7 @@ func buildFirmwareHandler(c fiber.Ctx) error {
 		}
 		state.Status = "done"
 		state.BinPath = binPath
+		state.TagName = tagName
 	}()
 
 	return c.Status(202).JSON(fiber.Map{"status": "building"})
@@ -85,8 +87,9 @@ func getBuildStatusHandler(c fiber.Ctx) error {
 	bs.mu.Lock()
 	defer bs.mu.Unlock()
 	return c.JSON(fiber.Map{
-		"status":  bs.Status,
-		"message": bs.Message,
+		"status":   bs.Status,
+		"message":  bs.Message,
+		"tag_name": bs.TagName,
 	})
 }
 
@@ -125,9 +128,19 @@ func getManifestHandler(c fiber.Ctx) error {
 		{"path": fmt.Sprintf("/api/sensors/%s/firmware.bin", uuid), "offset": 0x10000},  // 65536
 	}
 
+	version := "dev"
+	if st, ok := buildStatuses.Load(uuid); ok {
+		bs := st.(*buildState)
+		bs.mu.Lock()
+		if bs.TagName != "" {
+			version = bs.TagName
+		}
+		bs.mu.Unlock()
+	}
+
 	manifest := map[string]any{
 		"name":    name,
-		"version": "1.1.0",
+		"version": version,
 		"builds": []map[string]any{
 			{
 				"chipFamily": "ESP32-S3",
@@ -250,7 +263,7 @@ var codebergBaseURL = "https://codeberg.org/api/v1"
 
 // downloadFirmwareRelease downloads pre-built firmware binaries from a Codeberg release
 // into /tmp/firmware/{uuid}/ and synthesizes otadata.bin.
-func downloadFirmwareRelease(uuid string) (string, error) {
+func downloadFirmwareRelease(uuid string) (binPath, tagName string, err error) {
 	channel := os.Getenv("FIRMWARE_CHANNEL")
 	if channel == "" {
 		channel = "stable"
@@ -265,22 +278,23 @@ func downloadFirmwareRelease(uuid string) (string, error) {
 	releaseURL := fmt.Sprintf("%s/repos/cfhn/lora-frequenzmessung/releases/tags/%s", codebergBaseURL, tag)
 	releaseResp, err := http.Get(releaseURL)
 	if err != nil {
-		return "", fmt.Errorf("fetch release metadata: %w", err)
+		return "", "", fmt.Errorf("fetch release metadata: %w", err)
 	}
 	defer releaseResp.Body.Close()
 
 	if releaseResp.StatusCode != 200 {
-		return "", fmt.Errorf("codeberg release API returned %d for tag %s", releaseResp.StatusCode, tag)
+		return "", "", fmt.Errorf("codeberg release API returned %d for tag %s", releaseResp.StatusCode, tag)
 	}
 
 	var release struct {
-		Assets []struct {
+		TagName string `json:"tag_name"`
+		Assets  []struct {
 			Name               string `json:"name"`
 			BrowserDownloadURL string `json:"browser_download_url"`
 		} `json:"assets"`
 	}
 	if err := json.NewDecoder(releaseResp.Body).Decode(&release); err != nil {
-		return "", fmt.Errorf("parse release metadata: %w", err)
+		return "", "", fmt.Errorf("parse release metadata: %w", err)
 	}
 
 	// Helper to find an asset by suffix
@@ -295,21 +309,21 @@ func downloadFirmwareRelease(uuid string) (string, error) {
 
 	bootloaderURL, err := findAsset("_bootloader.bin")
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	partitionsURL, err := findAsset("_partitions.bin")
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	firmwareURL, err := findAsset("_firmware.bin")
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// Prepare destination directory
 	dstDir := filepath.Join(os.TempDir(), "firmware", uuid)
 	if err := os.MkdirAll(dstDir, 0755); err != nil {
-		return "", fmt.Errorf("create firmware dir: %w", err)
+		return "", "", fmt.Errorf("create firmware dir: %w", err)
 	}
 
 	// Download each binary
@@ -325,7 +339,7 @@ func downloadFirmwareRelease(uuid string) (string, error) {
 
 	for _, d := range downloads {
 		if err := downloadFile(d.url, filepath.Join(dstDir, d.name)); err != nil {
-			return "", fmt.Errorf("download %s: %w", d.name, err)
+			return "", "", fmt.Errorf("download %s: %w", d.name, err)
 		}
 	}
 
@@ -333,7 +347,7 @@ func downloadFirmwareRelease(uuid string) (string, error) {
 	otaDst := filepath.Join(dstDir, "otadata.bin")
 	f, err := os.Create(otaDst)
 	if err != nil {
-		return "", fmt.Errorf("create otadata.bin: %w", err)
+		return "", "", fmt.Errorf("create otadata.bin: %w", err)
 	}
 	buf := make([]byte, 0x2000)
 	for i := range buf {
@@ -341,14 +355,14 @@ func downloadFirmwareRelease(uuid string) (string, error) {
 	}
 	if _, err := f.Write(buf); err != nil {
 		f.Close()
-		return "", fmt.Errorf("write otadata.bin: %w", err)
+		return "", "", fmt.Errorf("write otadata.bin: %w", err)
 	}
 	if err := f.Close(); err != nil {
-		return "", fmt.Errorf("close otadata.bin: %w", err)
+		return "", "", fmt.Errorf("close otadata.bin: %w", err)
 	}
 	log.Printf("INFO: synthesized otadata.bin (8192 bytes of 0xFF) for sensor %s", uuid)
 
-	return filepath.Join(dstDir, "firmware.bin"), nil
+	return filepath.Join(dstDir, "firmware.bin"), release.TagName, nil
 }
 
 // downloadFile downloads a URL and writes it to dst.
