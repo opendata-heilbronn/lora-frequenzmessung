@@ -1,11 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -19,184 +19,150 @@ func setupMgmtTestApp() *fiber.App {
 	return app
 }
 
-// TestGenerateCustomsH_WithoutLoRa verifies that customs.h disables LoRa
-// when no TTN credentials are provided.
-func TestGenerateCustomsH_WithoutLoRa(t *testing.T) {
-	result := generateCustomsH("test-uuid-1234", "", "", false)
+// mockCodebergServer returns an httptest.Server that simulates the Codeberg release API.
+// assets is a map of filename → content.
+func mockCodebergServer(t *testing.T, tag string, assets map[string][]byte) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
 
-	if !strings.Contains(result, "#define ENABLE_LORA 0") {
-		t.Fatal("expected ENABLE_LORA 0 for non-TTN build")
+	// Serve release metadata
+	mux.HandleFunc("/api/v1/repos/cfhn/lora-frequenzmessung/releases/tags/"+tag, func(w http.ResponseWriter, r *http.Request) {
+		type asset struct {
+			Name               string `json:"name"`
+			BrowserDownloadURL string `json:"browser_download_url"`
+		}
+		var assetList []asset
+		for name := range assets {
+			assetList = append(assetList, asset{
+				Name:               name,
+				BrowserDownloadURL: "http://" + r.Host + "/download/" + name,
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"assets": assetList})
+	})
+
+	// Serve binary downloads
+	mux.HandleFunc("/download/", func(w http.ResponseWriter, r *http.Request) {
+		name := r.URL.Path[len("/download/"):]
+		content, ok := assets[name]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Write(content)
+	})
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestDownloadFirmware_Stable verifies that FIRMWARE_CHANNEL=stable downloads
+// the three required binaries and synthesizes otadata.bin.
+func TestDownloadFirmware_Stable(t *testing.T) {
+	assets := map[string][]byte{
+		"heltec_wifi_lora_32_V3_bootloader.bin":  []byte("bootloader-data"),
+		"heltec_wifi_lora_32_V3_partitions.bin":  []byte("partitions-data"),
+		"heltec_wifi_lora_32_V3_firmware.bin":    []byte("firmware-data"),
 	}
-	if !strings.Contains(result, `sensor_id[] = "test-uuid-1234"`) {
-		t.Fatal("expected sensor_id to be set")
+	srv := mockCodebergServer(t, "firmware-pax-stable", assets)
+
+	orig := codebergBaseURL
+	codebergBaseURL = srv.URL + "/api/v1"
+	t.Cleanup(func() { codebergBaseURL = orig })
+
+	t.Setenv("FIRMWARE_CHANNEL", "stable")
+
+	uuid := "aabbccdd"
+	dstDir := filepath.Join(os.TempDir(), "firmware", uuid)
+	t.Cleanup(func() { os.RemoveAll(dstDir) })
+
+	binPath, err := downloadFirmwareRelease(uuid)
+	if err != nil {
+		t.Fatalf("downloadFirmwareRelease failed: %v", err)
 	}
-	if strings.Contains(result, "#define ENABLE_LORA 1") {
-		t.Fatal("ENABLE_LORA must not be 1 for non-TTN build")
+
+	if binPath != filepath.Join(dstDir, "firmware.bin") {
+		t.Errorf("unexpected binPath: %s", binPath)
+	}
+
+	// Verify the 3 downloaded files
+	for _, name := range []string{"bootloader.bin", "partitions.bin", "firmware.bin"} {
+		data, err := os.ReadFile(filepath.Join(dstDir, name))
+		if err != nil {
+			t.Fatalf("missing %s: %v", name, err)
+		}
+		if len(data) == 0 {
+			t.Errorf("%s is empty", name)
+		}
+	}
+
+	// Verify otadata.bin is synthesized: 8192 bytes of 0xFF
+	otadata, err := os.ReadFile(filepath.Join(dstDir, "otadata.bin"))
+	if err != nil {
+		t.Fatalf("missing otadata.bin: %v", err)
+	}
+	if len(otadata) != 0x2000 {
+		t.Errorf("otadata.bin: expected 8192 bytes, got %d", len(otadata))
+	}
+	for i, b := range otadata {
+		if b != 0xFF {
+			t.Errorf("otadata.bin[%d] = 0x%02X, want 0xFF", i, b)
+			break
+		}
 	}
 }
 
-// TestGenerateCustomsH_WithLoRa verifies that customs.h enables LoRa
-// and includes the DevEUI/AppKey when TTN credentials are provided.
-func TestGenerateCustomsH_WithLoRa(t *testing.T) {
-	result := generateCustomsH("test-uuid-5678", "0011223344556677", "AABBCCDDEEFF00112233445566778899", true)
+// TestDownloadFirmware_DevelopChannel verifies that FIRMWARE_CHANNEL=develop
+// uses the firmware-pax-develop tag.
+func TestDownloadFirmware_DevelopChannel(t *testing.T) {
+	assets := map[string][]byte{
+		"heltec_wifi_lora_32_V3_bootloader.bin": []byte("bl"),
+		"heltec_wifi_lora_32_V3_partitions.bin": []byte("pt"),
+		"heltec_wifi_lora_32_V3_firmware.bin":   []byte("fw"),
+	}
+	srv := mockCodebergServer(t, "firmware-pax-develop", assets)
 
-	if !strings.Contains(result, "#define ENABLE_LORA 1") {
-		t.Fatal("expected ENABLE_LORA 1 for TTN build")
-	}
-	if !strings.Contains(result, "0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77") {
-		t.Fatal("expected DevEUI bytes in output")
-	}
-	if !strings.Contains(result, "0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF") {
-		t.Fatal("expected AppKey bytes in output")
+	orig := codebergBaseURL
+	codebergBaseURL = srv.URL + "/api/v1"
+	t.Cleanup(func() { codebergBaseURL = orig })
+
+	t.Setenv("FIRMWARE_CHANNEL", "develop")
+
+	uuid := "11223344"
+	dstDir := filepath.Join(os.TempDir(), "firmware", uuid)
+	t.Cleanup(func() { os.RemoveAll(dstDir) })
+
+	_, err := downloadFirmwareRelease(uuid)
+	if err != nil {
+		t.Fatalf("downloadFirmwareRelease (develop channel) failed: %v", err)
 	}
 }
 
-// TestBuildPreparation_WithoutLoRa verifies that the build directory is set up
-// correctly: source is copied and customs.h is written with LoRa disabled.
-func TestBuildPreparation_WithoutLoRa(t *testing.T) {
-	// Create a fake sensor-pax source tree
-	fakeSrc := t.TempDir()
-	srcDir := filepath.Join(fakeSrc, "src")
-	if err := os.MkdirAll(srcDir, 0755); err != nil {
-		t.Fatal(err)
+// TestDownloadFirmware_MissingAsset verifies that a missing asset returns an error.
+func TestDownloadFirmware_MissingAsset(t *testing.T) {
+	// Only provide bootloader and partitions — firmware.bin is missing
+	assets := map[string][]byte{
+		"heltec_wifi_lora_32_V3_bootloader.bin": []byte("bl"),
+		"heltec_wifi_lora_32_V3_partitions.bin": []byte("pt"),
 	}
-	if err := os.WriteFile(filepath.Join(srcDir, "main.cpp"), []byte("// main"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(fakeSrc, "platformio.ini"), []byte("[env]"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	srv := mockCodebergServer(t, "firmware-pax-stable", assets)
 
-	t.Setenv("SENSOR_PAX_PATH", fakeSrc)
+	orig := codebergBaseURL
+	codebergBaseURL = srv.URL + "/api/v1"
+	t.Cleanup(func() { codebergBaseURL = orig })
 
-	_, err := runPlatformioBuild("test-uuid-no-lora", "", "", false)
+	t.Setenv("FIRMWARE_CHANNEL", "stable")
 
+	uuid := "deadbeef"
+	dstDir := filepath.Join(os.TempDir(), "firmware", uuid)
+	t.Cleanup(func() { os.RemoveAll(dstDir) })
+
+	_, err := downloadFirmwareRelease(uuid)
 	if err == nil {
-		t.Fatal("expected platformio build to fail in test environment")
-	}
-	if strings.Contains(err.Error(), "copy source") {
-		t.Fatalf("source copy should not fail: %v", err)
-	}
-	if strings.Contains(err.Error(), "write customs.h") {
-		t.Fatalf("customs.h write should not fail: %v", err)
-	}
-	if strings.Contains(err.Error(), "resolve sensor-pax path") {
-		t.Fatalf("path resolution should not fail: %v", err)
-	}
-
-	buildDir := filepath.Join(os.TempDir(), "pax-build-test-uuid-no-lora")
-
-	customsPath := filepath.Join(buildDir, "src", "customs.h")
-	customsBytes, err := os.ReadFile(customsPath)
-	if err != nil {
-		t.Fatalf("customs.h should exist in build dir: %v", err)
-	}
-	customs := string(customsBytes)
-	if !strings.Contains(customs, "#define ENABLE_LORA 0") {
-		t.Fatal("customs.h should have ENABLE_LORA 0 for non-TTN build")
-	}
-	if !strings.Contains(customs, `sensor_id[] = "test-uuid-no-lora"`) {
-		t.Fatal("customs.h should contain the sensor UUID")
-	}
-
-	mainCpp, err := os.ReadFile(filepath.Join(buildDir, "src", "main.cpp"))
-	if err != nil {
-		t.Fatalf("main.cpp should be copied to build dir: %v", err)
-	}
-	if string(mainCpp) != "// main" {
-		t.Fatal("main.cpp content should match source")
-	}
-
-	if _, err := os.Stat(filepath.Join(buildDir, "platformio.ini")); err != nil {
-		t.Fatal("platformio.ini should be copied to build dir")
-	}
-
-	os.RemoveAll(buildDir)
-}
-
-// TestBuildPreparation_RelativePath verifies that a relative SENSOR_PAX_PATH
-// is resolved correctly.
-func TestBuildPreparation_RelativePath(t *testing.T) {
-	baseDir := t.TempDir()
-	fakeSrc := filepath.Join(baseDir, "sensor-pax")
-	srcDir := filepath.Join(fakeSrc, "src")
-	if err := os.MkdirAll(srcDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(srcDir, "main.cpp"), []byte("// test"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	origDir, _ := os.Getwd()
-	if err := os.Chdir(baseDir); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.Chdir(origDir) })
-
-	t.Setenv("SENSOR_PAX_PATH", "./sensor-pax")
-
-	_, err := runPlatformioBuild("test-uuid-relpath", "", "", false)
-
-	if err != nil && strings.Contains(err.Error(), "copy source") {
-		t.Fatalf("relative path should resolve correctly: %v", err)
-	}
-
-	buildDir := filepath.Join(os.TempDir(), "pax-build-test-uuid-relpath")
-	if _, err := os.Stat(filepath.Join(buildDir, "src", "customs.h")); err != nil {
-		t.Fatal("build directory should be set up even with relative SENSOR_PAX_PATH")
-	}
-
-	os.RemoveAll(buildDir)
-}
-
-// TestBuildPreparation_ParentFallback verifies that when ./sensor-pax doesn't
-// exist in CWD, the build falls back to ../sensor-pax.
-func TestBuildPreparation_ParentFallback(t *testing.T) {
-	projectRoot := t.TempDir()
-	fakeSrc := filepath.Join(projectRoot, "sensor-pax", "src")
-	if err := os.MkdirAll(fakeSrc, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(fakeSrc, "main.cpp"), []byte("// fallback"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	backendDir := filepath.Join(projectRoot, "backend")
-	if err := os.MkdirAll(backendDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	origDir, _ := os.Getwd()
-	if err := os.Chdir(backendDir); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.Chdir(origDir) })
-
-	t.Setenv("SENSOR_PAX_PATH", "./sensor-pax")
-
-	_, err := runPlatformioBuild("test-uuid-fallback", "", "", false)
-
-	if err != nil && strings.Contains(err.Error(), "copy source") {
-		t.Fatalf("parent directory fallback should find sensor-pax: %v", err)
-	}
-
-	buildDir := filepath.Join(os.TempDir(), "pax-build-test-uuid-fallback")
-	t.Cleanup(func() { os.RemoveAll(buildDir) })
-
-	customs, err := os.ReadFile(filepath.Join(buildDir, "src", "customs.h"))
-	if err != nil {
-		t.Fatalf("customs.h should exist after parent fallback: %v", err)
-	}
-	if !strings.Contains(string(customs), "#define ENABLE_LORA 0") {
-		t.Fatal("customs.h should have ENABLE_LORA 0")
-	}
-
-	mainCpp, err := os.ReadFile(filepath.Join(buildDir, "src", "main.cpp"))
-	if err != nil {
-		t.Fatalf("main.cpp should be copied: %v", err)
-	}
-	if string(mainCpp) != "// fallback" {
-		t.Fatal("main.cpp should come from ../sensor-pax, not ./sensor-pax")
+		t.Fatal("expected error for missing firmware.bin asset, got nil")
 	}
 }
 

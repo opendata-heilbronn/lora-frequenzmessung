@@ -1,18 +1,14 @@
 package main
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 	"sync"
-	"time"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -26,18 +22,13 @@ type buildState struct {
 
 var buildStatuses sync.Map // key: uuid → *buildState
 
-// buildSemaphore limits concurrent firmware builds.
-var buildSemaphore = make(chan struct{}, 2)
-
-const buildTimeout = 5 * time.Minute
-
 func buildFirmwareHandler(c fiber.Ctx) error {
 	uuid := c.Params("uuid")
 	if !uuidRegex.MatchString(uuid) {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid sensor UUID"})
 	}
 
-	// Fetch sensor from backend to get TTN credentials
+	// Verify sensor exists in backend
 	resp, err := internalRequest("GET", "/internal/sensors/"+uuid, nil)
 	if err != nil {
 		return c.Status(502).JSON(fiber.Map{"error": "backend unreachable"})
@@ -50,13 +41,6 @@ func buildFirmwareHandler(c fiber.Ctx) error {
 	if resp.StatusCode != 200 {
 		return c.Status(resp.StatusCode).JSON(fiber.Map{"error": "backend error"})
 	}
-
-	body, _ := io.ReadAll(resp.Body)
-	var sensor map[string]any
-	json.Unmarshal(body, &sensor)
-
-	devEUI, _ := sensor["dev_eui"].(string)
-	appKey, _ := sensor["app_key"].(string)
 
 	// Check if already building
 	if st, ok := buildStatuses.Load(uuid); ok {
@@ -72,14 +56,8 @@ func buildFirmwareHandler(c fiber.Ctx) error {
 	state := &buildState{Status: "building"}
 	buildStatuses.Store(uuid, state)
 
-	hasTTN := devEUI != ""
-
 	go func() {
-		// Acquire build semaphore
-		buildSemaphore <- struct{}{}
-		defer func() { <-buildSemaphore }()
-
-		binPath, err := runPlatformioBuild(uuid, devEUI, appKey, hasTTN)
+		binPath, err := downloadFirmwareRelease(uuid)
 		state.mu.Lock()
 		defer state.mu.Unlock()
 		if err != nil {
@@ -137,7 +115,7 @@ func getManifestHandler(c fiber.Ctx) error {
 	json.Unmarshal(body, &sensor)
 	name, _ := sensor["name"].(string)
 
-	// Manifest used by esp-web-tools. For ESP32-S3 we flash 3 parts like the CLI example:
+	// Manifest used by esp-web-tools. For ESP32-S3 we flash 3 parts:
 	//   0x0      bootloader.bin
 	//   0x8000   partitions.bin
 	//   0x10000  firmware.bin
@@ -267,213 +245,130 @@ func getOtaDataBinHandler(c fiber.Ctx) error {
 	return c.SendFile(p)
 }
 
-func runPlatformioBuild(uuid, devEUI, appKey string, hasTTN bool) (string, error) {
-	// Determine source sensor-pax path
-	sensorPaxSrc := os.Getenv("SENSOR_PAX_PATH")
-	if sensorPaxSrc == "" {
-		sensorPaxSrc = "./sensor-pax"
+// codebergBaseURL is the base URL for Codeberg API calls. Can be overridden in tests.
+var codebergBaseURL = "https://codeberg.org/api/v1"
+
+// downloadFirmwareRelease downloads pre-built firmware binaries from a Codeberg release
+// into /tmp/firmware/{uuid}/ and synthesizes otadata.bin.
+func downloadFirmwareRelease(uuid string) (string, error) {
+	channel := os.Getenv("FIRMWARE_CHANNEL")
+	if channel == "" {
+		channel = "stable"
 	}
-	// Resolve to absolute path
-	sensorPaxSrc, err := filepath.Abs(sensorPaxSrc)
+
+	tag := "firmware-pax-stable"
+	if channel == "develop" {
+		tag = "firmware-pax-develop"
+	}
+
+	// Fetch release metadata from Codeberg API
+	releaseURL := fmt.Sprintf("%s/repos/cfhn/lora-frequenzmessung/releases/tags/%s", codebergBaseURL, tag)
+	releaseResp, err := http.Get(releaseURL)
 	if err != nil {
-		return "", fmt.Errorf("resolve sensor-pax path: %w", err)
+		return "", fmt.Errorf("fetch release metadata: %w", err)
 	}
-	// If the resolved path doesn't exist, try ../sensor-pax (project root when
-	// the backend runs from backend/).
-	if _, err := os.Stat(sensorPaxSrc); os.IsNotExist(err) {
-		alt, absErr := filepath.Abs(filepath.Join("..", "sensor-pax"))
-		if absErr == nil {
-			if _, statErr := os.Stat(alt); statErr == nil {
-				sensorPaxSrc = alt
+	defer releaseResp.Body.Close()
+
+	if releaseResp.StatusCode != 200 {
+		return "", fmt.Errorf("codeberg release API returned %d for tag %s", releaseResp.StatusCode, tag)
+	}
+
+	var release struct {
+		Assets []struct {
+			Name               string `json:"name"`
+			BrowserDownloadURL string `json:"browser_download_url"`
+		} `json:"assets"`
+	}
+	if err := json.NewDecoder(releaseResp.Body).Decode(&release); err != nil {
+		return "", fmt.Errorf("parse release metadata: %w", err)
+	}
+
+	// Helper to find an asset by suffix
+	findAsset := func(suffix string) (string, error) {
+		for _, a := range release.Assets {
+			if len(a.Name) >= len(suffix) && a.Name[len(a.Name)-len(suffix):] == suffix {
+				return a.BrowserDownloadURL, nil
 			}
 		}
+		return "", fmt.Errorf("asset with suffix %q not found in release %s", suffix, tag)
 	}
 
-	// Create temp build directory
-	buildDir := filepath.Join(os.TempDir(), fmt.Sprintf("pax-build-%s", uuid))
-	if err := os.RemoveAll(buildDir); err != nil {
-		return "", fmt.Errorf("cleanup build dir: %w", err)
-	}
-
-	// Copy sensor-pax to build dir
-	if err := copyDir(sensorPaxSrc, buildDir); err != nil {
-		return "", fmt.Errorf("copy source: %w", err)
-	}
-
-	// Generate customs.h (restrictive permissions — contains keys)
-	customsH := generateCustomsH(uuid, devEUI, appKey, hasTTN)
-	customsPath := filepath.Join(buildDir, "src", "customs.h")
-	if err := os.WriteFile(customsPath, []byte(customsH), 0600); err != nil {
-		return "", fmt.Errorf("write customs.h: %w", err)
-	}
-
-	// Run platformio build with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), buildTimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "platformio", "run")
-	cmd.Dir = buildDir
-	out, err := cmd.CombinedOutput()
+	bootloaderURL, err := findAsset("_bootloader.bin")
 	if err != nil {
-		return "", fmt.Errorf("platformio build failed: %w\n%s", err, string(out))
+		return "", err
+	}
+	partitionsURL, err := findAsset("_partitions.bin")
+	if err != nil {
+		return "", err
+	}
+	firmwareURL, err := findAsset("_firmware.bin")
+	if err != nil {
+		return "", err
 	}
 
-	// Locate build artifacts
-	outDir := filepath.Join(buildDir, ".pio", "build", "heltec_wifi_lora_32_V3")
-	bootloaderSrc := filepath.Join(outDir, "bootloader.bin")
-	partitionsSrc := filepath.Join(outDir, "partitions.bin")
-	// Espressif sometimes emits ota_data_initial.bin or boot_app0.bin
-	otaInitSrc := filepath.Join(outDir, "ota_data_initial.bin")
-	bootApp0Src := filepath.Join(outDir, "boot_app0.bin")
-	firmwareSrc := filepath.Join(outDir, "firmware.bin")
-
-	// Destination directory for serving
+	// Prepare destination directory
 	dstDir := filepath.Join(os.TempDir(), "firmware", uuid)
 	if err := os.MkdirAll(dstDir, 0755); err != nil {
 		return "", fmt.Errorf("create firmware dir: %w", err)
 	}
 
-	// Copy required artifacts
-	if err := copyFile(bootloaderSrc, filepath.Join(dstDir, "bootloader.bin")); err != nil {
-		return "", fmt.Errorf("copy bootloader.bin: %w", err)
+	// Download each binary
+	type download struct {
+		url  string
+		name string
 	}
-	if err := copyFile(partitionsSrc, filepath.Join(dstDir, "partitions.bin")); err != nil {
-		return "", fmt.Errorf("copy partitions.bin: %w", err)
-	}
-	// otadata: prefer ota_data_initial.bin; fallback to boot_app0.bin; if neither exists, synthesize 0x2000 bytes of 0xFF
-	otaDst := filepath.Join(dstDir, "otadata.bin")
-	if _, err := os.Stat(otaInitSrc); err == nil {
-		if err := copyFile(otaInitSrc, otaDst); err != nil {
-			return "", fmt.Errorf("copy ota_data_initial.bin: %w", err)
-		}
-	} else if _, err := os.Stat(bootApp0Src); err == nil {
-		if err := copyFile(bootApp0Src, otaDst); err != nil {
-			return "", fmt.Errorf("copy boot_app0.bin as otadata.bin: %w", err)
-		}
-	} else {
-		// Synthesize a valid (erased) OTA data sector: 0x2000 (8192) bytes of 0xFF
-		f, err := os.Create(otaDst)
-		if err != nil {
-			return "", fmt.Errorf("create synthesized otadata.bin: %w", err)
-		}
-		defer f.Close()
-		buf := bytes.Repeat([]byte{0xFF}, 0x2000)
-		if _, err := f.Write(buf); err != nil {
-			return "", fmt.Errorf("write synthesized otadata.bin: %w", err)
-		}
-		if err := f.Sync(); err != nil {
-			return "", fmt.Errorf("sync synthesized otadata.bin: %w", err)
-		}
-		log.Printf("INFO: synthesized otadata.bin (8192 bytes of 0xFF) for sensor %s", uuid)
-	}
-	if err := copyFile(firmwareSrc, filepath.Join(dstDir, "firmware.bin")); err != nil {
-		return "", fmt.Errorf("copy firmware.bin: %w", err)
+	downloads := []download{
+		{bootloaderURL, "bootloader.bin"},
+		{partitionsURL, "partitions.bin"},
+		{firmwareURL, "firmware.bin"},
 	}
 
-	// Clean up build directory now that firmware binaries have been copied
-	if err := os.RemoveAll(buildDir); err != nil {
-		log.Printf("WARN: failed to clean up build dir %s: %v", buildDir, err)
+	for _, d := range downloads {
+		if err := downloadFile(d.url, filepath.Join(dstDir, d.name)); err != nil {
+			return "", fmt.Errorf("download %s: %w", d.name, err)
+		}
 	}
+
+	// Synthesize otadata.bin: 8192 bytes of 0xFF (erased OTA data sector)
+	otaDst := filepath.Join(dstDir, "otadata.bin")
+	f, err := os.Create(otaDst)
+	if err != nil {
+		return "", fmt.Errorf("create otadata.bin: %w", err)
+	}
+	buf := make([]byte, 0x2000)
+	for i := range buf {
+		buf[i] = 0xFF
+	}
+	if _, err := f.Write(buf); err != nil {
+		f.Close()
+		return "", fmt.Errorf("write otadata.bin: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return "", fmt.Errorf("close otadata.bin: %w", err)
+	}
+	log.Printf("INFO: synthesized otadata.bin (8192 bytes of 0xFF) for sensor %s", uuid)
 
 	return filepath.Join(dstDir, "firmware.bin"), nil
 }
 
-func generateCustomsH(sensorID, devEUI, appKey string, hasTTN bool) string {
-	enableLora := 0
-	devEuiArr := "0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00"
-	appKeyArr := "0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00"
-	if hasTTN {
-		enableLora = 1
-		devEuiArr = hexToCArray(devEUI)
-		appKeyArr = hexToCArray(appKey)
-	}
-
-	return fmt.Sprintf(`#ifndef CUSTOMS_H
-#define CUSTOMS_H
-
-#include <cstdint>
-
-#define ENABLE_LOGGING 1
-#define ENABLE_DISPLAY 0
-#define ENABLE_LORA %d
-
-char sensor_id[] = "%s";
-
-uint8_t devEui[] = {%s};
-uint8_t appEui[] = {0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01};
-uint8_t appKey[] = {%s};
-
-/* ABP para (unused for OTAA) */
-uint8_t nwkSKey[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-uint8_t appSKey[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-uint32_t devAddr = (uint32_t)0x00000000;
-uint16_t userChannelsMask[6] = {0x00FF, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000};
-
-float factor = 0.7;
-float sleepTime = 900;
-
-int SensorTypFrequency = 0;
-int SensorTypBattery = 1;
-
-#endif // CUSTOMS_H
-`,
-		enableLora,
-		sensorID,
-		devEuiArr,
-		appKeyArr,
-	)
-}
-
-// hexToCArray converts an uppercase hex string to a C array initializer.
-// e.g. "70B3D57E" → "0x70, 0xB3, 0xD5, 0x7E"
-func hexToCArray(hexStr string) string {
-	hexStr = strings.ToUpper(hexStr)
-	parts := make([]string, 0, len(hexStr)/2)
-	for i := 0; i+1 < len(hexStr); i += 2 {
-		parts = append(parts, "0x"+hexStr[i:i+2])
-	}
-	return strings.Join(parts, ", ")
-}
-
-func copyDir(src, dst string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		// Skip .pio build artifacts to keep build clean
-		if info.IsDir() && info.Name() == ".pio" {
-			return filepath.SkipDir
-		}
-
-		relPath, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		dstPath := filepath.Join(dst, relPath)
-
-		if info.IsDir() {
-			return os.MkdirAll(dstPath, info.Mode())
-		}
-		return copyFile(path, dstPath)
-	})
-}
-
-func copyFile(src, dst string) error {
-	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
-		return err
-	}
-	srcFile, err := os.Open(src)
+// downloadFile downloads a URL and writes it to dst.
+func downloadFile(url, dst string) error {
+	resp, err := http.Get(url)
 	if err != nil {
 		return err
 	}
-	defer srcFile.Close()
+	defer resp.Body.Close()
 
-	dstFile, err := os.Create(dst)
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
+	}
+
+	f, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+	defer f.Close()
 
-	_, err = io.Copy(dstFile, srcFile)
+	_, err = io.Copy(f, resp.Body)
 	return err
 }
