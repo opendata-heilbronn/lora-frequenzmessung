@@ -1,8 +1,6 @@
-FROM golang:alpine as app-builder
+FROM golang:alpine AS app-builder
 WORKDIR /go/src/app
 COPY backend .
-COPY backend/Aggregator/clients.yml backend/Aggregator/clients.yml
-RUN mkdir -p backend/Aggregator
 
 RUN go mod download
 RUN CGO_ENABLED=0 GOOS=linux go build -o /main ./Aggregator
@@ -20,16 +18,6 @@ LABEL org.opencontainers.image.licenses=MIT
 LABEL org.opencontainers.image.revision=$GIT_SHA
 LABEL org.opencontainers.image.version=$IMAGE_VERSION
 
-ENV BROKEN_HOST=eu1.cloud.thethings.network
-ENV BROKEN_PORT=1883
-ENV CLIENTID=go-mqtt-client
-ENV TOPIC="v3/your-ttn-app-id@ttn/devices/lora-dev/up"
-ENV MQTT_USERNAME="v3/your-ttn-app-id"
-ENV MQTT_PASSWORD=""
-ENV DB_DSN=""
-EXPOSE 3001
-
-COPY --from=app-builder /main  /main
-COPY --from=app-builder /go/src/app/backend  /backend
+COPY --from=app-builder /main /main
 COPY --from=alpine:latest /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 CMD ["/main"]
