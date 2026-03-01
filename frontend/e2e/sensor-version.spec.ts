@@ -132,7 +132,7 @@ test.describe('Sensor firmware version', () => {
     await expect(page.locator('.page-error')).toContainText('TTN not configured')
   })
 
-  test('Refresh All Versions button sends POST to request-all-versions', async ({ page }) => {
+  test('Request All Versions shows confirmation before sending', async ({ page }) => {
     await page.route('**/api/sensors', (route) => {
       if (route.request().method() === 'GET') {
         route.fulfill({
@@ -157,11 +157,48 @@ test.describe('Sensor firmware version', () => {
 
     await page.goto('/')
 
-    await page.getByRole('button', { name: 'Refresh All Versions' }).click()
+    // First click shows warning confirmation banner
+    await page.getByRole('button', { name: 'Request All Versions' }).click()
+    await expect(page.getByRole('button', { name: 'Yes, send to all' })).toBeVisible()
+    await expect(page.locator('.confirm-banner')).toBeVisible()
+    expect(allVersionsCalled).toBe(false)
 
+    // Confirm sends the request
+    await page.getByRole('button', { name: 'Yes, send to all' }).click()
     expect(allVersionsCalled).toBe(true)
     await expect(page.locator('.page-success')).toBeVisible()
     await expect(page.locator('.page-success')).toContainText('all linked sensors')
+  })
+
+  test('Request All Versions Cancel dismisses confirmation without sending', async ({ page }) => {
+    await page.route('**/api/sensors', (route) => {
+      if (route.request().method() === 'GET') {
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([BASE_SENSOR]),
+        })
+      } else {
+        route.continue()
+      }
+    })
+
+    let allVersionsCalled = false
+    await page.route('**/api/sensors/request-all-versions', (route) => {
+      allVersionsCalled = true
+      route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+    })
+
+    await page.goto('/')
+
+    await page.getByRole('button', { name: 'Request All Versions' }).click()
+    await expect(page.locator('.confirm-banner')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Cancel' }).click()
+
+    // Confirmation gone, button back, no request made
+    await expect(page.getByRole('button', { name: 'Request All Versions' })).toBeVisible()
+    expect(allVersionsCalled).toBe(false)
   })
 
   test('firmware column header is present', async ({ page }) => {

@@ -10,6 +10,15 @@
     </div>
 
     <template v-else>
+      <div v-if="confirmAllVersions" class="confirm-banner">
+        <OnyxInfoCard color="warning">
+          Send a version-request downlink to ALL linked sensors? This uses LoRa duty cycle on every device.
+        </OnyxInfoCard>
+        <div class="confirm-banner-actions">
+          <OnyxButton label="Yes, send to all" color="danger" @click="confirmAndRequestAllVersions" />
+          <OnyxButton label="Cancel" color="neutral" mode="outline" @click="confirmAllVersions = false" />
+        </div>
+      </div>
       <div v-if="pageError" class="page-error">
         <OnyxInfoCard color="danger">{{ pageError }}</OnyxInfoCard>
       </div>
@@ -23,14 +32,14 @@
             <OnyxHeadline is="h2">Registered Sensors</OnyxHeadline>
           </template>
           <template #actions>
-            <OnyxButton label="Refresh All Versions" color="neutral" mode="outline" @click="requestAllVersions" />
+            <OnyxButton label="Request All Versions" color="neutral" mode="outline" @click="confirmAllVersions = true" />
             <OnyxButton label="Refresh" color="primary" @click="refresh" />
           </template>
           <template #head>
             <tr>
               <th>Name</th>
               <th>UUID</th>
-              <th>Coordinates</th>
+              <th>Map</th>
               <th>Type</th>
               <th>TTN</th>
               <th>Last Data</th>
@@ -46,11 +55,12 @@
               <td class="bold">{{ s.name }}</td>
               <td class="mono">{{ s.uuid }}</td>
               <td>
-                <span
-                  class="coord-btn"
+                <button
+                  class="map-pin-btn"
                   @click="toggleMap(s.uuid)"
-                  :title="mapUUID === s.uuid ? 'Hide map' : 'Show on map'"
-                >{{ s.latitude.toFixed(6) }}, {{ s.longitude.toFixed(6) }}</span>
+                  :title="`${s.latitude.toFixed(6)}, ${s.longitude.toFixed(6)}`"
+                  :aria-label="mapUUID === s.uuid ? 'Hide map' : 'Show on map'"
+                >📍</button>
               </td>
               <td>{{ s.type }}</td>
               <td>
@@ -274,6 +284,8 @@ function showSuccess(msg: string) {
   successTimer = setTimeout(() => { pageSuccess.value = '' }, 4000)
 }
 
+const confirmAllVersions = ref(false)
+
 const ttnInfoUUID = ref('')
 const mapUUID = ref('')
 
@@ -349,7 +361,8 @@ async function requestVersion(uuid: string) {
   }
 }
 
-async function requestAllVersions() {
+async function confirmAndRequestAllVersions() {
+  confirmAllVersions.value = false
   try {
     await api.post('/api/sensors/request-all-versions')
     showSuccess('Version request queued for all linked sensors')
@@ -478,6 +491,18 @@ onUnmounted(() => {
   color: var(--onyx-color-text-icons-neutral-medium);
 }
 
+.confirm-banner {
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.confirm-banner-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
 .page-error {
   margin-bottom: 1rem;
 }
@@ -533,15 +558,16 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-.coord-btn {
+.map-pin-btn {
+  background: none;
+  border: none;
   cursor: pointer;
-  color: var(--onyx-color-base-primary-500);
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  font-size: 0.875rem;
-  white-space: nowrap;
+  font-size: 1.1rem;
+  padding: 0.1rem 0.2rem;
+  line-height: 1;
+  border-radius: 4px;
 }
-.coord-btn:hover { opacity: 0.8; }
+.map-pin-btn:hover { background: var(--onyx-color-base-neutral-200); }
 
 .battery-unknown {
   color: var(--onyx-color-text-icons-neutral-soft);
