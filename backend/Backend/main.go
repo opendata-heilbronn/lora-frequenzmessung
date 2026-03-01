@@ -44,6 +44,8 @@ func main() {
 	}
 	defer pool.Close()
 
+	runMigrations(DBDns)
+
 	// X-Internal-Key authentication — this service is internal-only
 	internalKey := Misc.GetInternalAPIKey()
 	app.Use(func(c fiber.Ctx) error {

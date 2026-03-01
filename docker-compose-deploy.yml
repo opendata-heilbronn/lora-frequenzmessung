@@ -63,7 +63,11 @@ services:
     networks: [app-net]
     restart: unless-stopped
     labels:
-      - "com.centurylinklabs.watchtower.enable=true"
+      com.centurylinklabs.watchtower.enable: "true"
+      traefik.enable: "true"
+      traefik.docker.network: "traefik_net"
+      traefik.port: "8080"
+      traefik.frontend.rule: "Host: ${HOSTNAME}"
 
   watchtower:
     image: containrrr/watchtower
