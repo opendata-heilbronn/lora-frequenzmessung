@@ -35,6 +35,36 @@ func main() {
 	app.Get("/health", func(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
+	app.Get("/version", func(c fiber.Ctx) error {
+		version := os.Getenv("IMAGE_VERSION")
+		if version == "" {
+			version = "dev"
+		}
+		sha := os.Getenv("GIT_SHA")
+		if sha == "" {
+			sha = "unknown"
+		}
+		run := os.Getenv("RUN_NUMBER")
+		if run == "" {
+			run = "0"
+		}
+		// Derive branch from version prefix (before the first '-')
+		branch := "unknown"
+		if len(version) > 0 {
+			parts := strings.SplitN(version, "-", 2)
+			if parts[0] == "latest" {
+				branch = "main"
+			} else if parts[0] == "develop" {
+				branch = "develop"
+			}
+		}
+		return c.JSON(fiber.Map{
+			"version": version,
+			"sha":     sha,
+			"run":     run,
+			"branch":  branch,
+		})
+	})
 	// Public firmware flashing endpoints (no auth) — required by esp-web-tools
 	app.Get("/api/sensors/:uuid/manifest.json", getManifestHandler)
 	app.Get("/api/sensors/:uuid/bootloader.bin", getBootloaderBinHandler)

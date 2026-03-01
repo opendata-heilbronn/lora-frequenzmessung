@@ -3,8 +3,7 @@ name: Build and Release PAX Sensor Firmware
 on:
   workflow_dispatch: ~
   push:
-    branches:
-      - main
+    branches: [main, develop]
     paths:
       - sensor-pax/**
       - .forgejo/workflows/deploy/deploy-firmware.yml
@@ -12,8 +11,9 @@ on:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    concurrency:
+      group: deploy-firmware-${{ github.ref_name }}
+      cancel-in-progress: true
 
     steps:
       - name: Checkout
@@ -62,7 +62,8 @@ jobs:
           SHA=$(git rev-parse --short HEAD)
           echo "name=firmware-pax-${DATE}-${SHA}" >> "$GITHUB_OUTPUT"
 
-      - name: Create Codeberg release and upload assets
+      - name: Create versioned release (main only)
+        if: github.ref_name == 'main'
         env:
           FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
           TAG: ${{ steps.tag.outputs.name }}
@@ -90,9 +91,93 @@ jobs:
             -d "{
               \"tag_name\": \"${TAG}\",
               \"name\": \"PAX Sensor Firmware ${TAG}\",
-              \"body\": \"Generic PAX sensor firmware build (no TTN credentials embedded).\n\n**Board:** Heltec WiFi LoRa 32 V3 (ESP32-S3)\n**Commit:** ${{ github.sha }}\"
+              \"body\": \"Generic PAX sensor firmware build (no TTN credentials embedded).\n\n**Board:** Heltec WiFi LoRa 32 V3 (ESP32-S3)\n**Commit:** ${{ github.sha }}\n**Run:** ${{ github.run_number }}\"
             }" | jq -r '.id')
           echo "Created release ${RELEASE_ID}"
+
+          # Upload assets
+          for f in dist/*; do
+            echo "Uploading ${f}..."
+            curl -sSf -X POST "${API}/releases/${RELEASE_ID}/assets" \
+              -H "Authorization: token ${FORGEJO_TOKEN}" \
+              -F "attachment=@${f}"
+          done
+
+      - name: Upsert firmware-pax-stable rolling release (main only)
+        if: github.ref_name == 'main'
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+        run: |
+          set -euo pipefail
+          API="https://codeberg.org/api/v1/repos/cfhn/lora-frequenzmessung"
+          ROLLING_TAG="firmware-pax-stable"
+
+          # Delete existing rolling release + tag if present
+          EXISTING_ID=$(curl -sS "${API}/releases/tags/${ROLLING_TAG}" \
+            -H "Authorization: token ${FORGEJO_TOKEN}" \
+            | jq -r '.id // empty')
+
+          if [ -n "$EXISTING_ID" ]; then
+            echo "Deleting existing rolling release ${EXISTING_ID}"
+            curl -sSf -X DELETE "${API}/releases/${EXISTING_ID}" \
+              -H "Authorization: token ${FORGEJO_TOKEN}"
+            curl -sSf -X DELETE "${API}/tags/${ROLLING_TAG}" \
+              -H "Authorization: token ${FORGEJO_TOKEN}"
+          fi
+
+          # Create stable rolling release
+          RELEASE_ID=$(curl -sSf -X POST "${API}/releases" \
+            -H "Authorization: token ${FORGEJO_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"tag_name\": \"${ROLLING_TAG}\",
+              \"name\": \"PAX Sensor Firmware (stable)\",
+              \"prerelease\": false,
+              \"body\": \"Rolling stable release — always points to the latest main build.\n\n**Commit:** ${{ github.sha }}\n**Run:** ${{ github.run_number }}\n**Versioned tag:** ${{ steps.tag.outputs.name }}\"
+            }" | jq -r '.id')
+          echo "Created stable rolling release ${RELEASE_ID}"
+
+          # Upload assets
+          for f in dist/*; do
+            echo "Uploading ${f}..."
+            curl -sSf -X POST "${API}/releases/${RELEASE_ID}/assets" \
+              -H "Authorization: token ${FORGEJO_TOKEN}" \
+              -F "attachment=@${f}"
+          done
+
+      - name: Upsert firmware-pax-develop pre-release (develop only)
+        if: github.ref_name == 'develop'
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+        run: |
+          set -euo pipefail
+          API="https://codeberg.org/api/v1/repos/cfhn/lora-frequenzmessung"
+          ROLLING_TAG="firmware-pax-develop"
+
+          # Delete existing rolling pre-release + tag if present
+          EXISTING_ID=$(curl -sS "${API}/releases/tags/${ROLLING_TAG}" \
+            -H "Authorization: token ${FORGEJO_TOKEN}" \
+            | jq -r '.id // empty')
+
+          if [ -n "$EXISTING_ID" ]; then
+            echo "Deleting existing rolling pre-release ${EXISTING_ID}"
+            curl -sSf -X DELETE "${API}/releases/${EXISTING_ID}" \
+              -H "Authorization: token ${FORGEJO_TOKEN}"
+            curl -sSf -X DELETE "${API}/tags/${ROLLING_TAG}" \
+              -H "Authorization: token ${FORGEJO_TOKEN}"
+          fi
+
+          # Create develop rolling pre-release
+          RELEASE_ID=$(curl -sSf -X POST "${API}/releases" \
+            -H "Authorization: token ${FORGEJO_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"tag_name\": \"${ROLLING_TAG}\",
+              \"name\": \"PAX Sensor Firmware (develop)\",
+              \"prerelease\": true,
+              \"body\": \"Rolling develop pre-release — always points to the latest develop build.\n\n**Commit:** ${{ github.sha }}\n**Run:** ${{ github.run_number }}\"
+            }" | jq -r '.id')
+          echo "Created develop rolling pre-release ${RELEASE_ID}"
 
           # Upload assets
           for f in dist/*; do
