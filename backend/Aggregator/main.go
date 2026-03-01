@@ -83,7 +83,11 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 		log.Printf("ERROR: empty payload from TTN message")
 		return
 	}
-	data = data[:len(data)-1] //remove last byte as it is null
+	// Strip trailing null byte only if present.
+	// Older firmwares sent strlen+1 (with null); current firmware sends strlen (no null).
+	if data[len(data)-1] == 0 {
+		data = data[:len(data)-1]
+	}
 
 	stringSlice := strings.Split(string(data), ",")
 	if len(stringSlice) < 3 {

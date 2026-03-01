@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - db-storage:/var/lib/postgresql/data
-    networks: [app-net]
+    networks: [app-net,stats_default]
     restart: unless-stopped
 
   backend:
@@ -88,4 +88,6 @@ volumes:
 networks:
   app-net:
   traefik_net:
+    external: true
+  stats_default:
     external: true
