@@ -9,9 +9,16 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /main ./Aggregator
 
 
 FROM scratch
+
+ARG IMAGE_VERSION=dev
+ARG GIT_SHA=unknown
+ARG RUN_NUMBER=0
+
 LABEL org.opencontainers.image.source=https://github.com/opendata-heilbronn/lora-frequenzmessung/
 LABEL org.opencontainers.image.description="This is the Aggregator for the LoRa frequency measurement project. it comnsumes MQQT messages and adds data to it and sends it to the backend."
 LABEL org.opencontainers.image.licenses=MIT
+LABEL org.opencontainers.image.revision=$GIT_SHA
+LABEL org.opencontainers.image.version=$IMAGE_VERSION
 
 ENV BROKEN_HOST=eu1.cloud.thethings.network
 ENV BROKEN_PORT=1883
