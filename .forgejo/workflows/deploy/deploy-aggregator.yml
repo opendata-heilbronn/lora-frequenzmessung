@@ -29,7 +29,7 @@ jobs:
           echo "DOCKER_HOST=tcp://${GATEWAY}:2375" >> "$GITHUB_ENV"
 
       - name: Login to Codeberg Container Registry
-        run: echo "${{ secrets.FORGEJO_TOKEN }}" | docker login codeberg.org -u "${{ github.actor }}" --password-stdin
+        run: echo "${{ secrets.FORGEJO_TOKEN }}" | docker login codeberg.org -u "${{ secrets.REGISTRY_USER }}" --password-stdin
 
       - name: Compute image tag
         id: tag
@@ -48,13 +48,13 @@ jobs:
             --build-arg IMAGE_VERSION="${{ steps.tag.outputs.primary }}-${{ github.sha }}" \
             --build-arg GIT_SHA="${{ github.sha }}" \
             --build-arg RUN_NUMBER="${{ github.run_number }}" \
-            -t codeberg.org/opendata-heilbronn/aggregator:${{ steps.tag.outputs.primary }} \
-            -t codeberg.org/opendata-heilbronn/aggregator:v${{ github.run_number }} \
+            -t codeberg.org/cfhn/lora-frequenzmessung/aggregator:${{ steps.tag.outputs.primary }} \
+            -t codeberg.org/cfhn/lora-frequenzmessung/aggregator:v${{ github.run_number }} \
             -f docker/go/Aggregator/Dockerfile .
 
       - name: Push Docker image
         run: |
-          docker push codeberg.org/opendata-heilbronn/aggregator:${{ steps.tag.outputs.primary }}
+          docker push codeberg.org/cfhn/lora-frequenzmessung/aggregator:${{ steps.tag.outputs.primary }}
           if [ "${{ steps.tag.outputs.push_secondary }}" = "true" ]; then
-            docker push codeberg.org/opendata-heilbronn/aggregator:v${{ github.run_number }}
+            docker push codeberg.org/cfhn/lora-frequenzmessung/aggregator:v${{ github.run_number }}
           fi

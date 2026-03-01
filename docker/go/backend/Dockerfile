@@ -1,4 +1,4 @@
-FROM golang:alpine as app-builder
+FROM golang:alpine AS app-builder
 WORKDIR /go/src/app
 COPY backend .
 
