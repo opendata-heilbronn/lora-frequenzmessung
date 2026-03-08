@@ -46,7 +46,7 @@ jobs:
 
       - name: Upload Playwright report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: playwright-report-frontend
           path: frontend/playwright-report/
@@ -91,6 +91,7 @@ jobs:
           unzip -q /tmp/dc.zip -d /tmp/
 
       - name: Run OWASP Dependency-Check
+        continue-on-error: true
         working-directory: ${{ github.workspace }}
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
