@@ -13,6 +13,16 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+const (
+	errInvalidSensorUUID = "invalid sensor UUID"
+	errFirmwareNotBuilt  = "firmware not built yet"
+	headerContentType    = "Content-Type"
+	headerCacheControl   = "Cache-Control"
+	cacheControlNoStore  = "no-store"
+	firmwareBinName      = "firmware.bin"
+	mimeOctetStream      = "application/octet-stream"
+)
+
 type buildState struct {
 	mu      sync.Mutex
 	Status  string `json:"status"` // "building" | "done" | "error"
@@ -26,13 +36,13 @@ var buildStatuses sync.Map // key: uuid → *buildState
 func buildFirmwareHandler(c fiber.Ctx) error {
 	uuid := c.Params("uuid")
 	if !uuidRegex.MatchString(uuid) {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid sensor UUID"})
+		return c.Status(400).JSON(fiber.Map{"error": errInvalidSensorUUID})
 	}
 
 	// Verify sensor exists in backend
 	resp, err := internalRequest("GET", "/internal/sensors/"+uuid, nil)
 	if err != nil {
-		return c.Status(502).JSON(fiber.Map{"error": "backend unreachable"})
+		return c.Status(502).JSON(fiber.Map{"error": errBackendUnreachable})
 	}
 	defer resp.Body.Close()
 
@@ -77,7 +87,7 @@ func buildFirmwareHandler(c fiber.Ctx) error {
 func getBuildStatusHandler(c fiber.Ctx) error {
 	uuid := c.Params("uuid")
 	if !uuidRegex.MatchString(uuid) {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid sensor UUID"})
+		return c.Status(400).JSON(fiber.Map{"error": errInvalidSensorUUID})
 	}
 	st, ok := buildStatuses.Load(uuid)
 	if !ok {
@@ -96,13 +106,13 @@ func getBuildStatusHandler(c fiber.Ctx) error {
 func getManifestHandler(c fiber.Ctx) error {
 	uuid := c.Params("uuid")
 	if !uuidRegex.MatchString(uuid) {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid sensor UUID"})
+		return c.Status(400).JSON(fiber.Map{"error": errInvalidSensorUUID})
 	}
 
 	// Fetch sensor name from backend
 	resp, err := internalRequest("GET", "/internal/sensors/"+uuid, nil)
 	if err != nil {
-		return c.Status(502).JSON(fiber.Map{"error": "backend unreachable"})
+		return c.Status(502).JSON(fiber.Map{"error": errBackendUnreachable})
 	}
 	defer resp.Body.Close()
 
@@ -149,20 +159,20 @@ func getManifestHandler(c fiber.Ctx) error {
 		},
 	}
 
-	c.Set("Content-Type", "application/json")
-	c.Set("Cache-Control", "no-store")
+	c.Set(headerContentType, "application/json")
+	c.Set(headerCacheControl, cacheControlNoStore)
 	return c.JSON(manifest)
 }
 
 func getFirmwareBinHandler(c fiber.Ctx) error {
 	uuid := c.Params("uuid")
 	if !uuidRegex.MatchString(uuid) {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid sensor UUID"})
+		return c.Status(400).JSON(fiber.Map{"error": errInvalidSensorUUID})
 	}
 
 	st, ok := buildStatuses.Load(uuid)
 	if !ok {
-		return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
+		return c.Status(404).JSON(fiber.Map{"error": errFirmwareNotBuilt})
 	}
 	bs := st.(*buildState)
 	bs.mu.Lock()
@@ -170,91 +180,91 @@ func getFirmwareBinHandler(c fiber.Ctx) error {
 	bs.mu.Unlock()
 
 	if status != "done" {
-		return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
+		return c.Status(404).JSON(fiber.Map{"error": errFirmwareNotBuilt})
 	}
 
-	binPath := filepath.Join(os.TempDir(), "firmware", uuid, "firmware.bin")
+	binPath := filepath.Join(os.TempDir(), "firmware", uuid, firmwareBinName)
 	if _, err := os.Stat(binPath); os.IsNotExist(err) {
 		return c.Status(404).JSON(fiber.Map{"error": "firmware binary not found"})
 	}
 
-	c.Set("Content-Type", "application/octet-stream")
-	c.Set("Cache-Control", "no-store")
+	c.Set(headerContentType, mimeOctetStream)
+	c.Set(headerCacheControl, cacheControlNoStore)
 	return c.SendFile(binPath)
 }
 
 func getBootloaderBinHandler(c fiber.Ctx) error {
 	uuid := c.Params("uuid")
 	if !uuidRegex.MatchString(uuid) {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid sensor UUID"})
+		return c.Status(400).JSON(fiber.Map{"error": errInvalidSensorUUID})
 	}
 	st, ok := buildStatuses.Load(uuid)
 	if !ok {
-		return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
+		return c.Status(404).JSON(fiber.Map{"error": errFirmwareNotBuilt})
 	}
 	bs := st.(*buildState)
 	bs.mu.Lock()
 	status := bs.Status
 	bs.mu.Unlock()
 	if status != "done" {
-		return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
+		return c.Status(404).JSON(fiber.Map{"error": errFirmwareNotBuilt})
 	}
 	p := filepath.Join(os.TempDir(), "firmware", uuid, "bootloader.bin")
 	if _, err := os.Stat(p); os.IsNotExist(err) {
 		return c.Status(404).JSON(fiber.Map{"error": "bootloader.bin not found"})
 	}
-	c.Set("Content-Type", "application/octet-stream")
-	c.Set("Cache-Control", "no-store")
+	c.Set(headerContentType, mimeOctetStream)
+	c.Set(headerCacheControl, cacheControlNoStore)
 	return c.SendFile(p)
 }
 
 func getPartitionsBinHandler(c fiber.Ctx) error {
 	uuid := c.Params("uuid")
 	if !uuidRegex.MatchString(uuid) {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid sensor UUID"})
+		return c.Status(400).JSON(fiber.Map{"error": errInvalidSensorUUID})
 	}
 	st, ok := buildStatuses.Load(uuid)
 	if !ok {
-		return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
+		return c.Status(404).JSON(fiber.Map{"error": errFirmwareNotBuilt})
 	}
 	bs := st.(*buildState)
 	bs.mu.Lock()
 	status := bs.Status
 	bs.mu.Unlock()
 	if status != "done" {
-		return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
+		return c.Status(404).JSON(fiber.Map{"error": errFirmwareNotBuilt})
 	}
 	p := filepath.Join(os.TempDir(), "firmware", uuid, "partitions.bin")
 	if _, err := os.Stat(p); os.IsNotExist(err) {
 		return c.Status(404).JSON(fiber.Map{"error": "partitions.bin not found"})
 	}
-	c.Set("Content-Type", "application/octet-stream")
-	c.Set("Cache-Control", "no-store")
+	c.Set(headerContentType, mimeOctetStream)
+	c.Set(headerCacheControl, cacheControlNoStore)
 	return c.SendFile(p)
 }
 
 func getOtaDataBinHandler(c fiber.Ctx) error {
 	uuid := c.Params("uuid")
 	if !uuidRegex.MatchString(uuid) {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid sensor UUID"})
+		return c.Status(400).JSON(fiber.Map{"error": errInvalidSensorUUID})
 	}
 	st, ok := buildStatuses.Load(uuid)
 	if !ok {
-		return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
+		return c.Status(404).JSON(fiber.Map{"error": errFirmwareNotBuilt})
 	}
 	bs := st.(*buildState)
 	bs.mu.Lock()
 	status := bs.Status
 	bs.mu.Unlock()
 	if status != "done" {
-		return c.Status(404).JSON(fiber.Map{"error": "firmware not built yet"})
+		return c.Status(404).JSON(fiber.Map{"error": errFirmwareNotBuilt})
 	}
 	p := filepath.Join(os.TempDir(), "firmware", uuid, "otadata.bin")
 	if _, err := os.Stat(p); os.IsNotExist(err) {
 		return c.Status(404).JSON(fiber.Map{"error": "otadata.bin not found"})
 	}
-	c.Set("Content-Type", "application/octet-stream")
-	c.Set("Cache-Control", "no-store")
+	c.Set(headerContentType, mimeOctetStream)
+	c.Set(headerCacheControl, cacheControlNoStore)
 	return c.SendFile(p)
 }
 
@@ -334,7 +344,7 @@ func downloadFirmwareRelease(uuid string) (binPath, tagName string, err error) {
 	downloads := []download{
 		{bootloaderURL, "bootloader.bin"},
 		{partitionsURL, "partitions.bin"},
-		{firmwareURL, "firmware.bin"},
+		{firmwareURL, firmwareBinName},
 	}
 
 	for _, d := range downloads {
@@ -362,7 +372,7 @@ func downloadFirmwareRelease(uuid string) (binPath, tagName string, err error) {
 	}
 	log.Printf("INFO: synthesized otadata.bin (8192 bytes of 0xFF) for sensor %s", uuid)
 
-	return filepath.Join(dstDir, "firmware.bin"), release.TagName, nil
+	return filepath.Join(dstDir, firmwareBinName), release.TagName, nil
 }
 
 // downloadFile downloads a URL and writes it to dst.

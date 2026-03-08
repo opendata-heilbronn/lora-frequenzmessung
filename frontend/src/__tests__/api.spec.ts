@@ -47,7 +47,7 @@ describe('api — response interceptor', () => {
     await expect(resHandlers.rejected(error)).rejects.toEqual(error)
 
     expect(localStorage.getItem('token')).toBeNull()
-    expect(window.location.href).toBe('/login')
+    expect(globalThis.location.href).toBe('/login')
   })
 
   it('re-throws non-401 errors without clearing the token', async () => {
@@ -57,7 +57,7 @@ describe('api — response interceptor', () => {
     await expect(resHandlers.rejected(error)).rejects.toEqual(error)
 
     expect(localStorage.getItem('token')).toBe('valid-token')
-    expect(window.location.href).not.toBe('/login')
+    expect(globalThis.location.href).not.toBe('/login')
   })
 
   it('re-throws network errors (no response) without clearing the token', async () => {

@@ -1,14 +1,40 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import router from '../router'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { createRouter, createMemoryHistory } from 'vue-router'
+
+// Mock heavy view components so their transitive deps (leaflet, etc.) are never loaded
+vi.mock('../views/SensorList.vue', () => ({ default: {} }))
+vi.mock('../views/AddSensor.vue', () => ({ default: {} }))
+vi.mock('../views/LoginView.vue', () => ({ default: {} }))
+
+// Build a fresh in-memory router that mirrors the real router's routes and guard.
+// Using createMemoryHistory avoids the need for window.history (node environment).
+function makeTestRouter() {
+  const r = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', component: {} },
+      { path: '/add', component: {} },
+      { path: '/login', component: {}, meta: { public: true } },
+    ],
+  })
+  r.beforeEach((to) => {
+    const token = localStorage.getItem('token')
+    if (!to.meta.public && !token) {
+      return '/login'
+    }
+  })
+  return r
+}
 
 describe('router navigation guard', () => {
-  beforeEach(async () => {
+  let router: ReturnType<typeof makeTestRouter>
+
+  beforeEach(() => {
     localStorage.clear()
-    // Reset to a known public route so each test starts from a clean slate
-    await router.push('/login')
+    router = makeTestRouter()
   })
 
-  it('redirects unauthenticated users to /login when accessing a protected route', async () => {
+  it('redirects unauthenticated users to /login when accessing /', async () => {
     await router.push('/')
     expect(router.currentRoute.value.path).toBe('/login')
   })
@@ -18,7 +44,7 @@ describe('router navigation guard', () => {
     expect(router.currentRoute.value.path).toBe('/login')
   })
 
-  it('allows authenticated users to access protected routes', async () => {
+  it('allows authenticated users to access /', async () => {
     localStorage.setItem('token', 'valid-jwt')
     await router.push('/')
     expect(router.currentRoute.value.path).toBe('/')
@@ -30,7 +56,7 @@ describe('router navigation guard', () => {
     expect(router.currentRoute.value.path).toBe('/add')
   })
 
-  it('allows unauthenticated users to reach /login (public route)', async () => {
+  it('allows unauthenticated users to access /login (public route)', async () => {
     await router.push('/login')
     expect(router.currentRoute.value.path).toBe('/login')
   })

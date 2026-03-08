@@ -44,6 +44,16 @@ jobs:
       - name: Run Playwright unit tests (mocked API)
         run: npx playwright test --project=unit
 
+      - name: Run Vitest unit tests with coverage
+        run: npm run test:unit:coverage
+
+      - name: Upload LCOV coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-lcov
+          path: frontend/coverage/lcov.info
+          retention-days: 1
+
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v3
@@ -103,6 +113,12 @@ jobs:
       - name: Add sonar-scanner to PATH
         run: echo "$HOME/.sonar/sonar-scanner-8.0.1.6346-linux-x64/bin" >> $GITHUB_PATH
 
+      - name: Download LCOV coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-lcov
+          path: frontend/coverage/
+
       - name: Run SonarQube analysis
         working-directory: ${{ github.workspace }}
         env:
@@ -110,4 +126,6 @@ jobs:
         run: |
           sonar-scanner \
             -Dsonar.token=$SONAR_TOKEN \
+            -Dsonar.sources=frontend/src \
+            -Dsonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info \
             -Dsonar.sarifReportPaths=trivy-report.sarif

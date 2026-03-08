@@ -108,9 +108,9 @@ onMounted(() => {
 
 async function startFlash() {
   // Allow tests to inject a mock flash function via window.__espFlash
-  const espFlash: typeof espFlashImpl = (window as any).__espFlash ?? espFlashImpl
-  // Allow tests to shorten the reboot wait via window.__rebootWaitMs
-  const rebootWaitMs: number = (window as any).__rebootWaitMs ?? 4000
+  const espFlash: typeof espFlashImpl = (globalThis as any).__espFlash ?? espFlashImpl
+  // Allow tests to shorten the reboot wait via globalThis.__rebootWaitMs
+  const rebootWaitMs: number = (globalThis as any).__rebootWaitMs ?? 4000
 
   // 1. Request serial port — if user cancels, stay on idle
   let port: any

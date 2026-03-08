@@ -88,4 +88,5 @@ jobs:
         run: |
           sonar-scanner \
             -Dsonar.token=$SONAR_TOKEN \
+            -Dsonar.sources=backend/Aggregator,backend/internal,backend/structs \
             -Dsonar.sarifReportPaths=trivy-report.sarif
