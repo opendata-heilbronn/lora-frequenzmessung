@@ -120,4 +120,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: sonar-scanner -Dsonar.token=$SONAR_TOKEN
+        run: |
+          DC_FLAG=""
+          [ -f dependency-check-report.json ] && DC_FLAG="-Dsonar.dependencyCheck.jsonReportPath=dependency-check-report.json"
+          sonar-scanner -Dsonar.token=$SONAR_TOKEN $DC_FLAG
