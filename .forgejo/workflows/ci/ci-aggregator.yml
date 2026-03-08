@@ -90,6 +90,7 @@ jobs:
             -Dsonar.token=$SONAR_TOKEN \
             -Dsonar.projectKey=lorax-aggregator \
             -Dsonar.projectName="Lorax – Aggregator" \
-            -Dsonar.sources=backend/Aggregator,backend/structs \
-            -Dsonar.exclusions=backend/vendor/** \
-            -Dsonar.sarifReportPaths=trivy-report.sarif
+            -Dsonar.projectBaseDir=${{ github.workspace }}/backend \
+            -Dsonar.sources=Aggregator,structs \
+            -Dsonar.exclusions=vendor/** \
+            -Dsonar.sarifReportPaths=${{ github.workspace }}/trivy-report.sarif

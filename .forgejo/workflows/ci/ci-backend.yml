@@ -106,9 +106,10 @@ jobs:
             -Dsonar.token=$SONAR_TOKEN \
             -Dsonar.projectKey=lorax-backend \
             -Dsonar.projectName="Lorax – Backend" \
-            -Dsonar.sources=backend/Backend,backend/Share,backend/structs \
-            -Dsonar.exclusions=backend/vendor/** \
-            -Dsonar.tests=backend/Backend,backend/Share \
+            -Dsonar.projectBaseDir=${{ github.workspace }}/backend \
+            -Dsonar.sources=Backend,Share,structs \
+            -Dsonar.exclusions=vendor/** \
+            -Dsonar.tests=Backend,Share \
             -Dsonar.test.inclusions=**/*_test.go \
-            -Dsonar.go.coverage.reportPaths=backend/coverage.out \
-            -Dsonar.sarifReportPaths=trivy-report.sarif
+            -Dsonar.go.coverage.reportPaths=coverage.out \
+            -Dsonar.sarifReportPaths=${{ github.workspace }}/trivy-report.sarif
