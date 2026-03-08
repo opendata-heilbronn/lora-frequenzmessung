@@ -33,6 +33,29 @@ jobs:
       - name: Run Backend tests with coverage
         run: go test -coverprofile=coverage.out -covermode=atomic -v ./Backend/... ./Share/...
 
+      - name: Set up Java (for OWASP Dependency-Check)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+
+      - name: Run OWASP Dependency-Check
+        working-directory: ${{ github.workspace }}
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          DC_VERSION=10.0.4
+          curl -sSLo /tmp/dc.zip \
+            https://github.com/dependency-check/DependencyCheck/releases/download/v${DC_VERSION}/dependency-check-${DC_VERSION}-release.zip
+          unzip -q /tmp/dc.zip -d /tmp/
+          /tmp/dependency-check/bin/dependency-check.sh \
+            --project lorax \
+            --scan backend/ \
+            --format JSON \
+            --out . \
+            --exclude "**/vendor/**" \
+            ${NVD_API_KEY:+--nvdApiKey "$NVD_API_KEY"}
+
       - name: Install sonar-scanner
         env:
           SONAR_SCANNER_VERSION: 8.0.1.6346
