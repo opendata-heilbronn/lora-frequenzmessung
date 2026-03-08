@@ -104,7 +104,10 @@ jobs:
         run: |
           sonar-scanner \
             -Dsonar.token=$SONAR_TOKEN \
-            -Dsonar.sources=backend/ManagementAPI,backend/Share,backend/internal,backend/structs \
+            -Dsonar.projectKey=lorax-management \
+            -Dsonar.projectName="Lorax – ManagementAPI" \
+            -Dsonar.sources=backend/ManagementAPI,backend/Share,backend/structs \
+            -Dsonar.exclusions=backend/vendor/** \
             -Dsonar.tests=backend/ManagementAPI,backend/Share \
             -Dsonar.test.inclusions=**/*_test.go \
             -Dsonar.go.coverage.reportPaths=backend/coverage.out \

@@ -88,5 +88,8 @@ jobs:
         run: |
           sonar-scanner \
             -Dsonar.token=$SONAR_TOKEN \
-            -Dsonar.sources=backend/Aggregator,backend/internal,backend/structs \
+            -Dsonar.projectKey=lorax-aggregator \
+            -Dsonar.projectName="Lorax – Aggregator" \
+            -Dsonar.sources=backend/Aggregator,backend/structs \
+            -Dsonar.exclusions=backend/vendor/** \
             -Dsonar.sarifReportPaths=trivy-report.sarif

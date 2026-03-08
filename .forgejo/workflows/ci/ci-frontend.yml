@@ -126,6 +126,9 @@ jobs:
         run: |
           sonar-scanner \
             -Dsonar.token=$SONAR_TOKEN \
+            -Dsonar.projectKey=lorax-frontend \
+            -Dsonar.projectName="Lorax – Frontend" \
             -Dsonar.sources=frontend/src \
+            -Dsonar.exclusions=frontend/node_modules/**,frontend/dist/**,frontend/playwright-report/** \
             -Dsonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info \
             -Dsonar.sarifReportPaths=trivy-report.sarif
