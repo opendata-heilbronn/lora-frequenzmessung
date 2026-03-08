@@ -59,61 +59,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Java (for OWASP Dependency-Check)
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: temurin
-
-      - name: Get date for NVD cache key
+      - name: Get date for Trivy DB cache key
         id: date
         run: echo "date=$(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
 
-      - name: Cache NVD database
+      - name: Cache Trivy DB
         uses: actions/cache@v4
         with:
-          path: ~/.dependency-check/data
-          key: nvd-data-${{ runner.os }}-${{ steps.date.outputs.date }}
-          restore-keys: nvd-data-${{ runner.os }}-
+          path: ~/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ steps.date.outputs.date }}
+          restore-keys: trivy-db-${{ runner.os }}-
 
-      - name: Cache OWASP Dependency-Check binary
-        id: cache-dc
-        uses: actions/cache@v4
-        with:
-          path: /tmp/dependency-check
-          key: dependency-check-10.0.4-linux
-
-      - name: Download OWASP Dependency-Check
-        if: steps.cache-dc.outputs.cache-hit != 'true'
+      - name: Install Trivy
         run: |
-          curl -sSLo /tmp/dc.zip \
-            https://github.com/dependency-check/DependencyCheck/releases/download/v10.0.4/dependency-check-10.0.4-release.zip
-          unzip -q /tmp/dc.zip -d /tmp/
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin
 
-      - name: Update NVD database
-        continue-on-error: true
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: |
-          /tmp/dependency-check/bin/dependency-check.sh \
-            --updateonly \
-            --data ~/.dependency-check/data \
-            ${NVD_API_KEY:+--nvdApiKey "$NVD_API_KEY"}
-
-      - name: Run OWASP Dependency-Check
+      - name: Run Trivy vulnerability scan
         working-directory: ${{ github.workspace }}
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: |
-          /tmp/dependency-check/bin/dependency-check.sh \
-            --project lorax \
-            --scan frontend/ \
-            --format JSON \
-            --out . \
-            --data ~/.dependency-check/data \
-            --exclude "**/node_modules/**" \
-            --noupdate \
-            ${NVD_API_KEY:+--nvdApiKey "$NVD_API_KEY"}
+          trivy fs \
+            --scanners vuln \
+            --format sarif \
+            --output trivy-report.sarif \
+            --cache-dir ~/.cache/trivy \
+            --exit-code 0 \
+            frontend/
 
       - name: Cache sonar-scanner
         id: cache-sonar
@@ -137,6 +108,6 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          DC_FLAG=""
-          [ -f dependency-check-report.json ] && DC_FLAG="-Dsonar.dependencyCheck.jsonReportPath=dependency-check-report.json"
-          sonar-scanner -Dsonar.token=$SONAR_TOKEN $DC_FLAG
+          sonar-scanner \
+            -Dsonar.token=$SONAR_TOKEN \
+            -Dsonar.sarifReportPaths=trivy-report.sarif
