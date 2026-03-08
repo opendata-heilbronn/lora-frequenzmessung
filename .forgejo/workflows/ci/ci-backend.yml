@@ -39,32 +39,61 @@ jobs:
           java-version: '21'
           distribution: temurin
 
+      - name: Get date for NVD cache key
+        id: date
+        run: echo "date=$(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
+
+      - name: Cache NVD database
+        uses: actions/cache@v4
+        with:
+          path: ~/.dependency-check/data
+          key: nvd-data-${{ runner.os }}-${{ steps.date.outputs.date }}
+          restore-keys: nvd-data-${{ runner.os }}-
+
+      - name: Cache OWASP Dependency-Check binary
+        id: cache-dc
+        uses: actions/cache@v4
+        with:
+          path: /tmp/dependency-check
+          key: dependency-check-10.0.4-linux
+
+      - name: Download OWASP Dependency-Check
+        if: steps.cache-dc.outputs.cache-hit != 'true'
+        run: |
+          curl -sSLo /tmp/dc.zip \
+            https://github.com/dependency-check/DependencyCheck/releases/download/v10.0.4/dependency-check-10.0.4-release.zip
+          unzip -q /tmp/dc.zip -d /tmp/
+
       - name: Run OWASP Dependency-Check
         working-directory: ${{ github.workspace }}
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: |
-          DC_VERSION=10.0.4
-          curl -sSLo /tmp/dc.zip \
-            https://github.com/dependency-check/DependencyCheck/releases/download/v${DC_VERSION}/dependency-check-${DC_VERSION}-release.zip
-          unzip -q /tmp/dc.zip -d /tmp/
           /tmp/dependency-check/bin/dependency-check.sh \
             --project lorax \
             --scan backend/ \
             --format JSON \
             --out . \
+            --data ~/.dependency-check/data \
             --exclude "**/vendor/**" \
             ${NVD_API_KEY:+--nvdApiKey "$NVD_API_KEY"}
 
+      - name: Cache sonar-scanner
+        id: cache-sonar
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/sonar-scanner-8.0.1.6346-linux-x64
+          key: sonar-scanner-8.0.1.6346
+
       - name: Install sonar-scanner
-        env:
-          SONAR_SCANNER_VERSION: 8.0.1.6346
+        if: steps.cache-sonar.outputs.cache-hit != 'true'
         run: |
-          export SONAR_SCANNER_HOME=$HOME/.sonar/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64
           curl --create-dirs -sSLo $HOME/.sonar/sonar-scanner.zip \
-            https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip
+            https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-8.0.1.6346-linux-x64.zip
           unzip -o $HOME/.sonar/sonar-scanner.zip -d $HOME/.sonar/
-          echo "$SONAR_SCANNER_HOME/bin" >> $GITHUB_PATH
+
+      - name: Add sonar-scanner to PATH
+        run: echo "$HOME/.sonar/sonar-scanner-8.0.1.6346-linux-x64/bin" >> $GITHUB_PATH
 
       - name: Run SonarQube analysis
         working-directory: ${{ github.workspace }}
