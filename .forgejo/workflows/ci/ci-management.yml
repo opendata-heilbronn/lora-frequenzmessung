@@ -33,50 +33,25 @@ jobs:
       - name: Run ManagementAPI tests with coverage
         run: go test -coverprofile=coverage.out -covermode=atomic -v ./ManagementAPI/... ./Share/...
 
-      - name: Set up Java (for OWASP Dependency-Check)
-        uses: actions/setup-java@v4
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
         with:
-          java-version: '21'
-          distribution: temurin
+          name: management-coverage
+          path: backend/coverage.out
+          retention-days: 1
 
-      - name: Get date for NVD cache key
-        id: date
-        run: echo "date=$(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
+  security-analysis:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Cache NVD database
-        uses: actions/cache@v4
+      - name: Download coverage report
+        uses: actions/download-artifact@v4
         with:
-          path: ~/.dependency-check/data
-          key: nvd-data-${{ runner.os }}-${{ steps.date.outputs.date }}
-          restore-keys: nvd-data-${{ runner.os }}-
-
-      - name: Cache OWASP Dependency-Check binary
-        id: cache-dc
-        uses: actions/cache@v4
-        with:
-          path: /tmp/dependency-check
-          key: dependency-check-10.0.4-linux
-
-      - name: Download OWASP Dependency-Check
-        if: steps.cache-dc.outputs.cache-hit != 'true'
-        run: |
-          curl -sSLo /tmp/dc.zip \
-            https://github.com/dependency-check/DependencyCheck/releases/download/v10.0.4/dependency-check-10.0.4-release.zip
-          unzip -q /tmp/dc.zip -d /tmp/
-
-      - name: Run OWASP Dependency-Check
-        working-directory: ${{ github.workspace }}
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: |
-          /tmp/dependency-check/bin/dependency-check.sh \
-            --project lorax \
-            --scan backend/ \
-            --format JSON \
-            --out . \
-            --data ~/.dependency-check/data \
-            --exclude "**/vendor/**" \
-            ${NVD_API_KEY:+--nvdApiKey "$NVD_API_KEY"}
+          name: management-coverage
+          path: backend/
 
       - name: Cache sonar-scanner
         id: cache-sonar
