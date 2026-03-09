@@ -88,6 +88,7 @@ jobs:
         run: |
           sonar-scanner \
             -Dsonar.token=$SONAR_TOKEN \
+            -Dsonar.host.url=https://sonarqube.mari0.dev \
             -Dsonar.projectKey=lorax-aggregator \
             -Dsonar.projectName="Lorax – Aggregator" \
             -Dsonar.projectBaseDir=${{ github.workspace }}/backend \

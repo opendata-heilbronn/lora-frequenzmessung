@@ -126,6 +126,7 @@ jobs:
         run: |
           sonar-scanner \
             -Dsonar.token=$SONAR_TOKEN \
+            -Dsonar.host.url=https://sonarqube.mari0.dev \
             -Dsonar.projectKey=lorax-frontend \
             -Dsonar.projectName="Lorax – Frontend" \
             -Dsonar.sources=frontend/src \

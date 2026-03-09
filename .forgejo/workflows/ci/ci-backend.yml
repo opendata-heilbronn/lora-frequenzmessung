@@ -104,6 +104,7 @@ jobs:
         run: |
           sonar-scanner \
             -Dsonar.token=$SONAR_TOKEN \
+            -Dsonar.host.url=https://sonarqube.mari0.dev \
             -Dsonar.projectKey=lorax-backend \
             -Dsonar.projectName="Lorax – Backend" \
             -Dsonar.projectBaseDir=${{ github.workspace }}/backend \
