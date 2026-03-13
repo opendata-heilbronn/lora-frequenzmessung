@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
@@ -22,6 +23,17 @@ export default defineConfig({
         target: 'http://localhost:3002',
         changeOrigin: true,
       },
+    },
+  },
+  test: {
+    environment: 'node',
+    include: ['src/__tests__/**/*.spec.ts'],
+    setupFiles: ['./src/__tests__/setup.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['lcov', 'text'],
+      reportsDirectory: 'coverage',
+      include: ['src/**/*.{ts,vue}'],
     },
   },
 })

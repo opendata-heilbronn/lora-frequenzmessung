@@ -8,7 +8,7 @@ on:
       - .forgejo/workflows/ci/ci-frontend.yml
 
 jobs:
-  playwright-unit:
+  test:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -27,8 +27,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Cache Playwright browsers
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ hashFiles('frontend/package-lock.json') }}
+
       - name: Install Playwright browsers
-        run: npx playwright install chromium --with-deps
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install chromium
+
+      - name: Install Playwright system dependencies
+        run: npx playwright install-deps chromium
 
       - name: Type-check
         run: npx vue-tsc --noEmit
@@ -36,10 +47,92 @@ jobs:
       - name: Run Playwright unit tests (mocked API)
         run: npx playwright test --project=unit
 
+      - name: Run Vitest unit tests with coverage
+        run: npm run test:unit:coverage
+
+      - name: Upload LCOV coverage report
+        uses: actions/upload-artifact@v3
+        with:
+          name: frontend-lcov
+          path: frontend/coverage/lcov.info
+          retention-days: 1
+
       - name: Upload Playwright report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: playwright-report-frontend
           path: frontend/playwright-report/
           retention-days: 7
+
+  security-analysis:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get date for Trivy DB cache key
+        id: date
+        run: echo "date=$(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
+
+      - name: Cache Trivy DB
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ steps.date.outputs.date }}
+          restore-keys: trivy-db-${{ runner.os }}-
+
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin
+
+      - name: Run Trivy vulnerability scan
+        working-directory: ${{ github.workspace }}
+        run: |
+          trivy fs \
+            --scanners vuln \
+            --format sarif \
+            --output trivy-report.sarif \
+            --cache-dir ~/.cache/trivy \
+            --exit-code 0 \
+            frontend/
+
+      - name: Cache sonar-scanner
+        id: cache-sonar
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/sonar-scanner-8.0.1.6346-linux-x64
+          key: sonar-scanner-8.0.1.6346
+
+      - name: Install sonar-scanner
+        if: steps.cache-sonar.outputs.cache-hit != 'true'
+        run: |
+          curl --create-dirs -sSLo $HOME/.sonar/sonar-scanner.zip \
+            https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-8.0.1.6346-linux-x64.zip
+          unzip -o $HOME/.sonar/sonar-scanner.zip -d $HOME/.sonar/
+
+      - name: Add sonar-scanner to PATH
+        run: echo "$HOME/.sonar/sonar-scanner-8.0.1.6346-linux-x64/bin" >> $GITHUB_PATH
+
+      - name: Download LCOV coverage report
+        uses: actions/download-artifact@v3
+        with:
+          name: frontend-lcov
+          path: frontend/coverage/
+
+      - name: Run SonarQube analysis
+        working-directory: ${{ github.workspace }}
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          sonar-scanner \
+            -Dsonar.token=$SONAR_TOKEN \
+            -Dsonar.host.url=https://sonarqube.mari0.dev \
+            -Dsonar.projectKey=lorax-frontend \
+            -Dsonar.projectName="Lorax – Frontend" \
+            -Dsonar.sources=frontend/src \
+            -Dsonar.exclusions=frontend/node_modules/**,frontend/dist/**,frontend/playwright-report/** \
+            -Dsonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info \
+            -Dsonar.sarifReportPaths=trivy-report.sarif

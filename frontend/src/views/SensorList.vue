@@ -40,16 +40,16 @@
           </template>
           <template #head>
             <tr>
-              <th>Name</th>
-              <th>UUID</th>
-              <th>Map</th>
-              <th>Type</th>
-              <th>TTN</th>
-              <th>Last Data</th>
-              <th>Battery</th>
-              <th>Firmware</th>
-              <th>Added</th>
-              <th></th>
+              <th scope="col">Name</th>
+              <th scope="col">UUID</th>
+              <th scope="col">Map</th>
+              <th scope="col">Type</th>
+              <th scope="col">TTN</th>
+              <th scope="col">Last Data</th>
+              <th scope="col">Battery</th>
+              <th scope="col">Firmware</th>
+              <th scope="col">Added</th>
+              <th scope="col"></th>
             </tr>
           </template>
 
