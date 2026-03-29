@@ -29,6 +29,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { OnyxInput, OnyxButton } from 'sit-onyx'
 import axios from 'axios'
+import { loadAndRefreshToken } from "../auth/user.ts";
 
 const router = useRouter()
 const username = ref('')
@@ -45,6 +46,7 @@ async function handleLogin() {
       password: password.value,
     })
     localStorage.setItem('token', resp.data.token)
+    loadAndRefreshToken()
     router.push('/')
   } catch (e: any) {
     error.value = e.response?.data?.error ?? 'Login failed'
@@ -59,8 +61,7 @@ async function handleLogin() {
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 100vh;
-  background: var(--onyx-color-base-neutral-100, #f5f5f5);
+  height: 100%;
 }
 
 .login-card {

@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <OnyxPageLayout>
     <div v-if="loading" class="status">
       <OnyxLoadingIndicator type="circle" />
       <span>Loading sensors…</span>
@@ -232,7 +232,7 @@
         <OnyxButton label="Add your first sensor" color="primary" link="/add" />
       </div>
     </template>
-  </div>
+  </OnyxPageLayout>
 </template>
 
 <script setup lang="ts">
@@ -243,7 +243,7 @@ import {
   OnyxBadge,
   OnyxHeadline,
   OnyxLoadingIndicator,
-  OnyxInfoCard,
+  OnyxInfoCard, OnyxPageLayout,
 } from 'sit-onyx'
 import api from '../api'
 import axios from 'axios'

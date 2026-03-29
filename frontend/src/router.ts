@@ -2,12 +2,14 @@ import { createRouter, createWebHistory } from 'vue-router'
 import SensorList from './views/SensorList.vue'
 import AddSensor from './views/AddSensor.vue'
 import LoginView from './views/LoginView.vue'
+import UserList from "./views/UserList.vue";
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', component: SensorList },
     { path: '/add', component: AddSensor },
+    { path: '/users', component: UserList },
     { path: '/login', component: LoginView, meta: { public: true } },
   ],
 })
