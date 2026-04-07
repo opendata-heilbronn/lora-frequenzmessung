@@ -34,7 +34,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: { lat: number; lng: number }): void
+  'update:modelValue': [value: { lat: number; lng: number }]
 }>()
 
 const mapEl = ref<HTMLElement | null>(null)

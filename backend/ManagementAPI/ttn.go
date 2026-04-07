@@ -8,6 +8,8 @@ import (
 	"os"
 )
 
+const ttnServerHost = "eu1.cloud.thethings.network"
+
 func getTTNConfig() (appID, apiKey, baseURL string) {
 	appID = os.Getenv("TTN_APP_ID")
 	apiKey = os.Getenv("TTN_API_KEY")
@@ -40,9 +42,9 @@ func registerTTNDevice(deviceID, devEUI, appKey string) error {
 				"dev_eui":   devEUI,
 				"join_eui":  joinEUI,
 			},
-			"join_server_address":        "eu1.cloud.thethings.network",
-			"network_server_address":     "eu1.cloud.thethings.network",
-			"application_server_address": "eu1.cloud.thethings.network",
+			"join_server_address":        ttnServerHost,
+			"network_server_address":     ttnServerHost,
+			"application_server_address": ttnServerHost,
 		},
 		"field_mask": map[string]any{
 			"paths": []string{

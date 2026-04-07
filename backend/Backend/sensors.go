@@ -30,6 +30,8 @@ type Sensor struct {
 	FirmwareVersionTime *time.Time `json:"firmware_version_time"`
 }
 
+const errSensorNotFound = "sensor not found"
+
 type CreateSensorRequest struct {
 	Name      string  `json:"name"`
 	Longitude float64 `json:"longitude"`
@@ -104,7 +106,7 @@ func getSensor(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
 			Scan(&s.ID, &s.UUID, &s.Name, &s.Longitude, &s.Latitude,
 				&s.Type, &s.DevEUI, &s.AppKey, &s.TtnDeviceID, &s.CreatedAt)
 		if err == pgx.ErrNoRows {
-			return c.Status(404).JSON(fiber.Map{"error": "sensor not found"})
+			return c.Status(404).JSON(fiber.Map{"error": errSensorNotFound})
 		}
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -167,7 +169,7 @@ func deleteSensor(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 		}
 		if !exists {
-			return c.Status(404).JSON(fiber.Map{"error": "sensor not found"})
+			return c.Status(404).JSON(fiber.Map{"error": errSensorNotFound})
 		}
 
 		_, err = pool.Exec(ctx, `DELETE FROM sensors WHERE uuid = $1`, uuid)
@@ -203,7 +205,7 @@ func updateFirmwareVersion(pool *pgxpool.Pool, ctx context.Context) fiber.Handle
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 		}
 		if tag.RowsAffected() == 0 {
-			return c.Status(404).JSON(fiber.Map{"error": "sensor not found"})
+			return c.Status(404).JSON(fiber.Map{"error": errSensorNotFound})
 		}
 
 		return c.JSON(fiber.Map{"firmware_version": req.Version})
@@ -229,7 +231,7 @@ func updateSensorTTN(pool *pgxpool.Pool, ctx context.Context) fiber.Handler {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 		}
 		if tag.RowsAffected() == 0 {
-			return c.Status(404).JSON(fiber.Map{"error": "sensor not found"})
+			return c.Status(404).JSON(fiber.Map{"error": errSensorNotFound})
 		}
 
 		return c.JSON(fiber.Map{

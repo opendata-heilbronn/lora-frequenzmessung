@@ -1,7 +1,13 @@
 package main
 
 import (
+	"context"
+	"crypto/rand"
+	"database/sql"
+	"embed"
+	"encoding/base64"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"regexp"
@@ -12,12 +18,19 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
+	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/database"
+	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/pwhash"
 )
+
+//go:embed migrations/*.sql
+var migrations embed.FS
 
 // uuidRegex validates sensor UUIDs (8-char lowercase hex).
 var uuidRegex = regexp.MustCompile(`^[0-9a-f]{8}$`)
 
 func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
 	// Start scheduled firmware version polling
 	intervalHours := 24
 	if v := os.Getenv("VERSION_CHECK_INTERVAL_HOURS"); v != "" {
@@ -27,7 +40,38 @@ func main() {
 	}
 	StartVersionCheckScheduler(time.Duration(intervalHours) * time.Hour)
 
+	dbURI := os.Getenv("DATABASE_URI")
+	if dbURI == "" {
+		dbURI = "postgres://management:management@localhost:5432/management?sslmode=disable"
+	}
+
+	db, err := database.Connect(database.Config{
+		URI:          dbURI,
+		MaxOpenConns: 8,
+	})
+	if err != nil {
+		logger.Error("connecting to db", slog.String("error", err.Error()))
+		return
+	}
+
+	err = database.Migrate(context.Background(), db, logger, migrations)
+	if err != nil {
+		logger.Error("migrating db", slog.String("error", err.Error()))
+		return
+	}
+
+	initialUserPassword, err := ensureInitialUserExists(context.Background(), db)
+	if err != nil {
+		logger.Error("creating initial user", slog.String("error", err.Error()))
+		return
+	}
+
+	if initialUserPassword != "" {
+		logger.Info("initial user created", slog.String("username", "admin"), slog.String("password", initialUserPassword))
+	}
+
 	app := fiber.New()
+	userRepo := &PostgresUserRepo{DB: db}
 
 	// CORS — read allowed origins from env, with sensible defaults
 	allowedOrigins := os.Getenv("CORS_ORIGINS")
@@ -41,7 +85,8 @@ func main() {
 	}))
 
 	// Public routes
-	app.Post("/auth/login", loginHandler)
+	app.Post("/auth/login", loginHandler(userRepo))
+	app.Post("/auth/refresh", refreshHandler(userRepo))
 	app.Get("/health", func(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
@@ -95,6 +140,10 @@ func main() {
 	api.Post("/sensors/request-all-versions", requestAllVersionsHandler)
 	api.Get("/provision-config", getProvisionConfigHandler)
 	api.Post("/sensors/:uuid/trigger-ota", triggerOTAHandler)
+	api.Get("/users", listUsers(userRepo))
+	api.Post("/users", createUser(userRepo))
+	api.Patch("/users/:id", updateUser(userRepo))
+	api.Delete("/users/:id", deleteUser(userRepo))
 
 	// Graceful shutdown
 	go func() {
@@ -111,4 +160,36 @@ func main() {
 		log.Printf("Server forced shutdown: %v", err)
 	}
 	log.Println("ManagementAPI stopped")
+}
+
+func ensureInitialUserExists(ctx context.Context, db *sql.DB) (string, error) {
+	var usercount int64
+
+	err := db.QueryRowContext(ctx, `select count(*) from users`).Scan(&usercount)
+	if err != nil {
+		return "", err
+	}
+
+	if usercount != 0 {
+		return "", nil
+	}
+
+	pwBytes := make([]byte, 32)
+	_, err = rand.Read(pwBytes)
+	if err != nil {
+		return "", err
+	}
+
+	pwString := base64.RawStdEncoding.EncodeToString(pwBytes)
+	pwHash, err := pwhash.Create(pwString)
+	if err != nil {
+		return "", err
+	}
+
+	_, err = db.ExecContext(ctx, `insert into users (username, password_hash) values ($1, $2)`, "admin", pwHash)
+	if err != nil {
+		return "", err
+	}
+
+	return pwString, nil
 }

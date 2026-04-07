@@ -26,13 +26,13 @@ func getProvisionConfigHandler(c fiber.Ctx) error {
 func triggerOTAHandler(c fiber.Ctx) error {
 	uuid := c.Params("uuid")
 	if !uuidRegex.MatchString(uuid) {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid sensor UUID"})
+		return c.Status(400).JSON(fiber.Map{"error": errInvalidSensorUUID})
 	}
 
 	// 1. Fetch sensor from backend
 	resp, err := internalRequest("GET", "/internal/sensors/"+uuid, nil)
 	if err != nil {
-		return c.Status(502).JSON(fiber.Map{"error": "backend unreachable"})
+		return c.Status(502).JSON(fiber.Map{"error": errBackendUnreachable})
 	}
 	defer resp.Body.Close()
 

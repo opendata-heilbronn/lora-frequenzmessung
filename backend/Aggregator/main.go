@@ -30,6 +30,8 @@ var sensorCache struct {
 
 const sensorCacheTTL = 30 * time.Second
 
+const internalKeyHeader = "X-Internal-Key"
+
 func loadSensors() ([]structs2.Clients, error) {
 	sensorCache.Lock()
 	defer sensorCache.Unlock()
@@ -41,7 +43,7 @@ func loadSensors() ([]structs2.Clients, error) {
 	backendURL := Misc2.GetBackendURL()
 	resp, err := resty.New().R().
 		SetHeader("Accept", "application/json").
-		SetHeader("X-Internal-Key", Misc2.GetInternalAPIKey()).
+		SetHeader(internalKeyHeader, Misc2.GetInternalAPIKey()).
 		Get(fmt.Sprintf("%s/internal/sensors", backendURL))
 	if err != nil {
 		return nil, fmt.Errorf("fetch sensors from backend: %w", err)
@@ -174,7 +176,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			continue
 		}
 		_, err = restyClient.R().
-			SetHeader("X-Internal-Key", Misc2.GetInternalAPIKey()).
+			SetHeader(internalKeyHeader, Misc2.GetInternalAPIKey()).
 			SetBody(encodedData).
 			Post(fmt.Sprintf("%s/internal/sensor-data", Misc2.GetBackendURL()))
 		if err != nil {
@@ -186,7 +188,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 func patchFirmwareVersion(uuid, version string) {
 	body := fmt.Sprintf(`{"version":%q}`, version)
 	_, err := resty.New().R().
-		SetHeader("X-Internal-Key", Misc2.GetInternalAPIKey()).
+		SetHeader(internalKeyHeader, Misc2.GetInternalAPIKey()).
 		SetHeader("Content-Type", "application/json").
 		SetBody(body).
 		Patch(fmt.Sprintf("%s/internal/sensors/%s/firmware-version", Misc2.GetBackendURL(), uuid))

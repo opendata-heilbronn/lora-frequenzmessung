@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <OnyxPageLayout>
     <OnyxHeadline is="h2">Add New Sensor</OnyxHeadline>
 
     <!-- Stage 1: Form -->
@@ -125,7 +125,7 @@
         <OnyxButton label="Back to sensor list" color="neutral" link="/" />
       </div>
     </OnyxCard>
-  </div>
+  </OnyxPageLayout>
 </template>
 
 <script setup lang="ts">
@@ -136,7 +136,7 @@ import {
   OnyxInput,
   OnyxButton,
   OnyxLoadingIndicator,
-  OnyxInfoCard,
+  OnyxInfoCard, OnyxPageLayout,
 } from 'sit-onyx'
 import api from '../api'
 import axios from 'axios'

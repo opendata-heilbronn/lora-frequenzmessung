@@ -52,3 +52,4 @@ frontend/.vite
 frontend/test-results
 .env.prod
 /sensor-pax/.playwright-mcp/
+/frontend/coverage/
