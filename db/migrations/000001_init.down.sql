@@ -1,1 +1,0 @@
-Drop table IF EXISTS sensor_data;

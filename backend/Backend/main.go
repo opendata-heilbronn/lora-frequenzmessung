@@ -89,6 +89,7 @@ func main() {
 	app.Get("/internal/sensors/:uuid", getSensor(pool, ctx))
 	app.Delete("/internal/sensors/:uuid", deleteSensor(pool, ctx))
 	app.Put("/internal/sensors/:uuid/ttn", updateSensorTTN(pool, ctx))
+	app.Patch("/internal/sensors/:uuid/firmware-version", updateFirmwareVersion(pool, ctx))
 
 	// Graceful shutdown
 	go func() {

@@ -59,25 +59,24 @@ test.describe('SensorMap — coordinates link', () => {
 
   // ── Coordinate cell appearance ────────────────────────────────────────────
 
-  test('coordinate cell is rendered as a clickable link for every sensor', async ({ page }) => {
+  test('coordinate cell is rendered as a clickable button for every sensor', async ({ page }) => {
     await mockSensors(page)
     await page.goto('/')
 
     for (const s of SENSORS) {
       const row = page.locator('tr', { hasText: s.name })
-      const coordBtn = row.locator('.coord-btn')
-      await expect(coordBtn).toBeVisible()
-      await expect(coordBtn).toContainText(s.latitude.toFixed(6))
-      await expect(coordBtn).toContainText(s.longitude.toFixed(6))
+      const mapBtn = row.locator('.map-pin-btn')
+      await expect(mapBtn).toBeVisible()
+      await expect(mapBtn).toHaveAttribute('title', `${s.latitude.toFixed(6)}, ${s.longitude.toFixed(6)}`)
     }
   })
 
-  test('coordinate cell has a title attribute describing its action', async ({ page }) => {
+  test('coordinate button has an aria-label describing its action', async ({ page }) => {
     await mockSensors(page)
     await page.goto('/')
 
-    const coordBtn = page.locator('tr', { hasText: 'sensor-alpha' }).locator('.coord-btn')
-    await expect(coordBtn).toHaveAttribute('title', 'Show on map')
+    const mapBtn = page.locator('tr', { hasText: 'sensor-alpha' }).locator('.map-pin-btn')
+    await expect(mapBtn).toHaveAttribute('aria-label', 'Show on map')
   })
 
   // ── Opening the map ───────────────────────────────────────────────────────
@@ -89,7 +88,7 @@ test.describe('SensorMap — coordinates link', () => {
     // No map initially
     await expect(page.locator('.map-row')).not.toBeVisible()
 
-    await page.locator('tr', { hasText: 'sensor-alpha' }).locator('.coord-btn').click()
+    await page.locator('tr', { hasText: 'sensor-alpha' }).locator('.map-pin-btn').click()
 
     await expect(page.locator('.map-row')).toBeVisible()
     await expect(page.locator('.sensor-map')).toBeVisible()
@@ -99,7 +98,7 @@ test.describe('SensorMap — coordinates link', () => {
     await mockSensors(page)
     await page.goto('/')
 
-    await page.locator('tr', { hasText: 'sensor-alpha' }).locator('.coord-btn').click()
+    await page.locator('tr', { hasText: 'sensor-alpha' }).locator('.map-pin-btn').click()
 
     await expect(page.locator('.map-row .leaflet-container')).toBeVisible()
     await expect(page.locator('.map-row .leaflet-marker-icon')).toBeVisible()
@@ -109,20 +108,20 @@ test.describe('SensorMap — coordinates link', () => {
     await mockSensors(page)
     await page.goto('/')
 
-    await page.locator('tr', { hasText: 'sensor-alpha' }).locator('.coord-btn').click()
+    await page.locator('tr', { hasText: 'sensor-alpha' }).locator('.map-pin-btn').click()
 
     // Leaflet opens the popup automatically on mount
     await expect(page.locator('.leaflet-popup-content')).toContainText('sensor-alpha')
   })
 
-  test('title attribute changes to "Hide map" while map is open', async ({ page }) => {
+  test('aria-label changes to "Hide map" while map is open', async ({ page }) => {
     await mockSensors(page)
     await page.goto('/')
 
-    const coordBtn = page.locator('tr', { hasText: 'sensor-alpha' }).locator('.coord-btn')
-    await coordBtn.click()
+    const mapBtn = page.locator('tr', { hasText: 'sensor-alpha' }).locator('.map-pin-btn')
+    await mapBtn.click()
 
-    await expect(coordBtn).toHaveAttribute('title', 'Hide map')
+    await expect(mapBtn).toHaveAttribute('aria-label', 'Hide map')
   })
 
   // ── Closing the map ───────────────────────────────────────────────────────
@@ -131,23 +130,23 @@ test.describe('SensorMap — coordinates link', () => {
     await mockSensors(page)
     await page.goto('/')
 
-    const coordBtn = page.locator('tr', { hasText: 'sensor-alpha' }).locator('.coord-btn')
-    await coordBtn.click()
+    const mapBtn = page.locator('tr', { hasText: 'sensor-alpha' }).locator('.map-pin-btn')
+    await mapBtn.click()
     await expect(page.locator('.map-row')).toBeVisible()
 
-    await coordBtn.click()
+    await mapBtn.click()
     await expect(page.locator('.map-row')).not.toBeVisible()
   })
 
-  test('title attribute returns to "Show on map" after collapsing', async ({ page }) => {
+  test('aria-label returns to "Show on map" after collapsing', async ({ page }) => {
     await mockSensors(page)
     await page.goto('/')
 
-    const coordBtn = page.locator('tr', { hasText: 'sensor-alpha' }).locator('.coord-btn')
-    await coordBtn.click()
-    await coordBtn.click()
+    const mapBtn = page.locator('tr', { hasText: 'sensor-alpha' }).locator('.map-pin-btn')
+    await mapBtn.click()
+    await mapBtn.click()
 
-    await expect(coordBtn).toHaveAttribute('title', 'Show on map')
+    await expect(mapBtn).toHaveAttribute('aria-label', 'Show on map')
   })
 
   // ── Only one map open at a time ───────────────────────────────────────────
@@ -156,8 +155,8 @@ test.describe('SensorMap — coordinates link', () => {
     await mockSensors(page)
     await page.goto('/')
 
-    const alphaBtn = page.locator('tr', { hasText: 'sensor-alpha' }).locator('.coord-btn')
-    const betaBtn = page.locator('tr', { hasText: 'sensor-beta' }).locator('.coord-btn')
+    const alphaBtn = page.locator('tr', { hasText: 'sensor-alpha' }).locator('.map-pin-btn')
+    const betaBtn = page.locator('tr', { hasText: 'sensor-beta' }).locator('.map-pin-btn')
 
     await alphaBtn.click()
     await expect(page.locator('.map-row')).toHaveCount(1)
@@ -172,7 +171,7 @@ test.describe('SensorMap — coordinates link', () => {
     await mockSensors(page)
     await page.goto('/')
 
-    await page.locator('tr', { hasText: 'sensor-alpha' }).locator('.coord-btn').click()
+    await page.locator('tr', { hasText: 'sensor-alpha' }).locator('.map-pin-btn').click()
 
     // Only one map open even though two sensors exist
     await expect(page.locator('.sensor-map')).toHaveCount(1)
@@ -196,7 +195,7 @@ test.describe('SensorMap — coordinates link', () => {
     await page.goto('/')
 
     // Open map for sensor-alpha
-    await page.locator('tr', { hasText: 'sensor-alpha' }).locator('.coord-btn').click()
+    await page.locator('tr', { hasText: 'sensor-alpha' }).locator('.map-pin-btn').click()
     await expect(page.locator('.map-row')).toBeVisible()
 
     // Open TTN panel for sensor-alpha (same sensor — both panels should coexist)
@@ -211,7 +210,7 @@ test.describe('SensorMap — coordinates link', () => {
     await mockSensors(page, [SENSORS[0]])
     await page.goto('/')
 
-    await page.locator('tr', { hasText: 'sensor-alpha' }).locator('.coord-btn').click()
+    await page.locator('tr', { hasText: 'sensor-alpha' }).locator('.map-pin-btn').click()
     await expect(page.locator('.map-row')).toBeVisible()
     await expect(page.locator('.leaflet-popup-content')).toContainText('sensor-alpha')
   })

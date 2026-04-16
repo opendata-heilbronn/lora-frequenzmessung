@@ -1,4 +1,4 @@
-.PHONY: help backend management aggregator frontend infra test build
+.PHONY: help backend management aggregator frontend infra migrate test build reset-password
 
 ENV_FILE := $(CURDIR)/backend/.env
 LOAD_ENV := set -a && source $(ENV_FILE) && set +a
@@ -13,6 +13,9 @@ infra: ## Start TimescaleDB, Mosquitto and Grafana via Docker Compose
 
 infra-down: ## Stop infrastructure containers
 	docker compose down
+
+migrate: ## Run DB migrations against local TimescaleDB (reads DB_DSN from backend/.env)
+	$(LOAD_ENV) && migrate -database "$$DB_DSN" -path backend/Backend/migrations up
 
 # ── Backend services ──────────────────────────────────────────────────────────
 
@@ -50,6 +53,9 @@ build: ## Build all Go binaries to /tmp
 	cd frontend && npm run build
 
 # ── Dev shortcuts ─────────────────────────────────────────────────────────────
+
+reset-password: ## Reset a user's password (interactive, or: make reset-password ARGS="username [newpassword]")
+	cd backend && $(LOAD_ENV) && go run ./cmd/reset-password $(ARGS)
 
 dev: ## Start infra + all backend services + frontend in parallel
 	$(MAKE) infra

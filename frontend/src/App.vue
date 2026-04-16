@@ -4,6 +4,7 @@
       <OnyxNavBar app-name="LoRa Sensor Management">
         <OnyxNavItem label="Sensors" link="/" />
         <OnyxNavItem label="+ Add Sensor" link="/add" />
+        <OnyxNavItem label="User" link="/users" />
         <template #mobileActivePage>
           <OnyxNavItem label="Sensors" link="/" />
         </template>
@@ -12,16 +13,15 @@
         </template>
       </OnyxNavBar>
     </template>
-    <OnyxPageLayout>
-      <router-view />
-    </OnyxPageLayout>
+    <router-view />
   </OnyxAppLayout>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { OnyxAppLayout, OnyxNavBar, OnyxPageLayout, OnyxNavItem, OnyxButton } from 'sit-onyx'
+import { OnyxAppLayout, OnyxNavBar, OnyxNavItem, OnyxButton } from 'sit-onyx'
+import {loadAndRefreshToken} from "./auth/user.ts";
 
 const router = useRouter()
 const route = useRoute()
@@ -32,4 +32,6 @@ function logout() {
   localStorage.removeItem('token')
   router.push('/login')
 }
+
+loadAndRefreshToken();
 </script>

@@ -4,6 +4,9 @@
 #include "provision.h"
 #include "pax.h"
 #include "logging.h"
+#include "version.h"
+#include "downlink.h"
+#include "ota.h"
 
 LoRaWANNode* node;
 Config cfg;
@@ -24,6 +27,14 @@ void setup() {
         while (true) delay(1000);  // reboots on success; never reached
     }
     cfg = loadConfig();
+
+    // ── OTA: check if a WiFi OTA update was requested via downlink ────────
+    if (doOTA && otaTag[0] != '\0') {
+        doOTA = false;  // clear — if OTA fails, don't retry forever
+        logMessageF("OTA triggered, tag=%s", otaTag);
+        performWiFiOTA(cfg.wifi_ssid, cfg.wifi_password, otaTag);
+        // falls through to normal uplink cycle if OTA fails
+    }
 
     // ── 1. Battery (read BEFORE BLE to avoid radio interference) ─
     pinMode(VBAT_CTRL, OUTPUT);
@@ -60,9 +71,14 @@ void setup() {
     }
 
     // ── 5. Build payload ─────────────────────────────────────────
-    char payload[96];
-    snprintf(payload, sizeof(payload), "%s,0,%.4f,1,%.4f",
+    char payload[128];
+    int payloadLen = snprintf(payload, sizeof(payload), "%s,0,%.4f,1,%.4f",
              cfg.sensor_id, paxCount * cfg.factor, battPct);
+    if (reportVersion) {
+        payloadLen += snprintf(payload + payloadLen, sizeof(payload) - payloadLen,
+                               ",2,%s", FIRMWARE_VERSION);
+        reportVersion = false;
+    }
     logMessageF("Payload: %s", payload);
 
     // ── 6. Send ──────────────────────────────────────────────────
@@ -70,8 +86,10 @@ void setup() {
     size_t downlinkLen = sizeof(downlink);
     int16_t state = node->sendReceive(
         (uint8_t*)payload, strlen(payload), 2, downlink, &downlinkLen);
+    logMessageF("sendReceive state=%d downlinkLen=%d", state, (int)downlinkLen);
     if (state >= 0) {
         logMessage("TX ok");
+        handleDownlink(downlink, downlinkLen);
     } else {
         logMessageF("TX error %d", state);
     }

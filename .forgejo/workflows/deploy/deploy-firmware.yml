@@ -19,6 +19,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Fetch git tags
+        run: git fetch --tags
+
+      - name: Compute firmware version
+        id: ver
+        run: |
+          # Find latest firmware-pax-v{N}.{N} tag
+          LATEST=$(git tag -l 'firmware-pax-v*.*' | sort -t. -k1,1n -k2,2n | tail -1)
+          if [ -z "$LATEST" ]; then
+            MAJOR=1; MINOR=0
+          else
+            VER="${LATEST#firmware-pax-v}"
+            MAJOR="${VER%%.*}"; MINOR="${VER##*.}"
+          fi
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            NEXT_MAJOR=$((MAJOR+1)); NEXT_MINOR=0
+          else
+            NEXT_MAJOR=$MAJOR; NEXT_MINOR=$((MINOR+1))
+          fi
+          echo "version=${NEXT_MAJOR}.${NEXT_MINOR}" >> "$GITHUB_OUTPUT"
+          echo "tag=firmware-pax-v${NEXT_MAJOR}.${NEXT_MINOR}" >> "$GITHUB_OUTPUT"
+
       - name: Cache PlatformIO core and toolchain
         uses: actions/cache@v4
         with:
@@ -43,6 +65,8 @@ jobs:
 
       - name: Build firmware
         working-directory: sensor-pax
+        env:
+          FIRMWARE_VERSION: ${{ steps.ver.outputs.version }}
         run: platformio run --environment heltec_wifi_lora_32_V3
 
       - name: Prepare release assets (rename 3 images)
@@ -55,18 +79,20 @@ jobs:
           cp "$SRC/firmware.bin"   "dist/heltec_wifi_lora_32_V3_firmware.bin"
           ls -l dist
 
-      - name: Compute release tag
-        id: tag
+      - name: Create version git tag
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
         run: |
-          DATE=$(date -u +%Y%m%d)
-          SHA=$(git rev-parse --short HEAD)
-          echo "name=firmware-pax-${DATE}-${SHA}" >> "$GITHUB_OUTPUT"
+          git config user.name "CI"
+          git config user.email "ci@cfhn.de"
+          git tag ${{ steps.ver.outputs.tag }}
+          git push origin ${{ steps.ver.outputs.tag }}
 
       - name: Create versioned release (main only)
         if: github.ref_name == 'main'
         env:
           FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
-          TAG: ${{ steps.tag.outputs.name }}
+          TAG: ${{ steps.ver.outputs.tag }}
         run: |
           set -euo pipefail
           API="https://codeberg.org/api/v1/repos/cfhn/lora-frequenzmessung"
@@ -90,7 +116,7 @@ jobs:
             -H "Content-Type: application/json" \
             -d "{
               \"tag_name\": \"${TAG}\",
-              \"name\": \"PAX Sensor Firmware ${TAG}\",
+              \"name\": \"PAX Sensor Firmware v${{ steps.ver.outputs.version }}\",
               \"body\": \"Generic PAX sensor firmware build (no TTN credentials embedded).\n\n**Board:** Heltec WiFi LoRa 32 V3 (ESP32-S3)\n**Commit:** ${{ github.sha }}\n**Run:** ${{ github.run_number }}\"
             }" | jq -r '.id')
           echo "Created release ${RELEASE_ID}"
@@ -133,7 +159,7 @@ jobs:
               \"tag_name\": \"${ROLLING_TAG}\",
               \"name\": \"PAX Sensor Firmware (stable)\",
               \"prerelease\": false,
-              \"body\": \"Rolling stable release — always points to the latest main build.\n\n**Commit:** ${{ github.sha }}\n**Run:** ${{ github.run_number }}\n**Versioned tag:** ${{ steps.tag.outputs.name }}\"
+              \"body\": \"Rolling stable release — always points to the latest main build.\n\n**Commit:** ${{ github.sha }}\n**Run:** ${{ github.run_number }}\n**Versioned tag:** ${{ steps.ver.outputs.tag }}\"
             }" | jq -r '.id')
           echo "Created stable rolling release ${RELEASE_ID}"
 
@@ -175,7 +201,7 @@ jobs:
               \"tag_name\": \"${ROLLING_TAG}\",
               \"name\": \"PAX Sensor Firmware (develop)\",
               \"prerelease\": true,
-              \"body\": \"Rolling develop pre-release — always points to the latest develop build.\n\n**Commit:** ${{ github.sha }}\n**Run:** ${{ github.run_number }}\"
+              \"body\": \"Rolling develop pre-release — always points to the latest develop build.\n\n**Commit:** ${{ github.sha }}\n**Run:** ${{ github.run_number }}\n**Versioned tag:** ${{ steps.ver.outputs.tag }}\"
             }" | jq -r '.id')
           echo "Created develop rolling pre-release ${RELEASE_ID}"
 

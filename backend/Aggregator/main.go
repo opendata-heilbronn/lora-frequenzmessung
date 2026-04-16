@@ -30,6 +30,8 @@ var sensorCache struct {
 
 const sensorCacheTTL = 30 * time.Second
 
+const internalKeyHeader = "X-Internal-Key"
+
 func loadSensors() ([]structs2.Clients, error) {
 	sensorCache.Lock()
 	defer sensorCache.Unlock()
@@ -41,7 +43,7 @@ func loadSensors() ([]structs2.Clients, error) {
 	backendURL := Misc2.GetBackendURL()
 	resp, err := resty.New().R().
 		SetHeader("Accept", "application/json").
-		SetHeader("X-Internal-Key", Misc2.GetInternalAPIKey()).
+		SetHeader(internalKeyHeader, Misc2.GetInternalAPIKey()).
 		Get(fmt.Sprintf("%s/internal/sensors", backendURL))
 	if err != nil {
 		return nil, fmt.Errorf("fetch sensors from backend: %w", err)
@@ -83,7 +85,11 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 		log.Printf("ERROR: empty payload from TTN message")
 		return
 	}
-	data = data[:len(data)-1] //remove last byte as it is null
+	// Strip trailing null byte only if present.
+	// Older firmwares sent strlen+1 (with null); current firmware sends strlen (no null).
+	if data[len(data)-1] == 0 {
+		data = data[:len(data)-1]
+	}
 
 	stringSlice := strings.Split(string(data), ",")
 	if len(stringSlice) < 3 {
@@ -106,6 +112,30 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			shift += 2
 			continue
 		}
+
+		// type 2 = firmware version string (not a float — handle separately)
+		if typeID == 2 {
+			version := stringSlice[shift+1]
+			shift += 2
+			found := false
+			for _, c := range clients {
+				if c.UUID == sensoreID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				log.Printf("WARN: unknown sensor %q, skipping version update", sensoreID)
+				continue
+			}
+			if version == "" {
+				log.Printf("WARN: sensor %q reported empty firmware version, skipping", sensoreID)
+				continue
+			}
+			patchFirmwareVersion(sensoreID, version)
+			continue
+		}
+
 		value, err := strconv.ParseFloat(stringSlice[shift+1], 64)
 		if err != nil {
 			log.Printf("ERROR: invalid value %q: %v", stringSlice[shift+1], err)
@@ -127,7 +157,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 		}
 		if !found {
 			log.Printf("WARN: unknown sensor %q, skipping", sensoreID)
-			return
+			continue
 		}
 		var DataWithClient structs2.DensityDataWithClient
 		switch typeID {
@@ -146,12 +176,24 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			continue
 		}
 		_, err = restyClient.R().
-			SetHeader("X-Internal-Key", Misc2.GetInternalAPIKey()).
+			SetHeader(internalKeyHeader, Misc2.GetInternalAPIKey()).
 			SetBody(encodedData).
 			Post(fmt.Sprintf("%s/internal/sensor-data", Misc2.GetBackendURL()))
 		if err != nil {
 			log.Printf("ERROR: failed to send data to backend: %v", err)
 		}
+	}
+}
+
+func patchFirmwareVersion(uuid, version string) {
+	body := fmt.Sprintf(`{"version":%q}`, version)
+	_, err := resty.New().R().
+		SetHeader(internalKeyHeader, Misc2.GetInternalAPIKey()).
+		SetHeader("Content-Type", "application/json").
+		SetBody(body).
+		Patch(fmt.Sprintf("%s/internal/sensors/%s/firmware-version", Misc2.GetBackendURL(), uuid))
+	if err != nil {
+		log.Printf("ERROR: failed to patch firmware version for %s: %v", uuid, err)
 	}
 }
 

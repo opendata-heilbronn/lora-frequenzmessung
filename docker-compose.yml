@@ -8,6 +8,7 @@ services:
         POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
     volumes:
       - db-storage:/var/lib/postgresql/data
+      - "./docker/timescaledb-init/100_additional_dbs.sh:/docker-entrypoint-initdb.d/100_additional_dbs.sh"
   mosquitto:
     image: eclipse-mosquitto
     ports:

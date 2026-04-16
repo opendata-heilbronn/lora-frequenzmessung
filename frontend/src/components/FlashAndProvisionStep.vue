@@ -5,16 +5,10 @@
     </OnyxInfoCard>
 
     <template v-else>
-      <!-- Idle: flash button kept in DOM via v-show so event listener persists across phases -->
-      <div v-show="phase === 'idle'">
-        <p>Connect your ESP32 sensor via USB, then click the button below.</p>
-        <p class="hint">Requires Chrome or Edge browser.</p>
-        <div class="flash-btn-wrap">
-          <esp-web-install-button ref="espBtnRef" :manifest="manifestUrl">
-            <button slot="activate" class="flash-button">⚡ Connect & Flash Sensor</button>
-            <span slot="unsupported">Your browser does not support Web Serial. Please use Chrome or Edge.</span>
-          </esp-web-install-button>
-        </div>
+      <!-- Idle -->
+      <div v-if="phase === 'idle'">
+        <p>Connect your ESP32 sensor via USB and hold the BOOT button, then click below.</p>
+        <p class="hint">The device will be erased, flashed and provisioned in one step. Requires Chrome or Edge.</p>
         <details class="advanced">
           <summary>Advanced settings</summary>
           <div class="advanced-grid">
@@ -22,34 +16,46 @@
             <OnyxInput label="Sleep (sec)" :model-value="sleepStr" @update:model-value="onSleepChange" />
           </div>
         </details>
+        <div class="action-row">
+          <OnyxButton label="⚡ Connect & Flash Sensor" color="primary" @click="startFlash" />
+        </div>
       </div>
 
-      <!-- Flashing progress -->
-      <div v-if="phase === 'flashing'" class="status-block">
+      <!-- Erasing -->
+      <div v-else-if="phase === 'erasing'" class="status-block">
         <OnyxLoadingIndicator type="circle" />
-        <span>Flashing… {{ flashStateLabel }}</span>
+        <span>Erasing flash…</span>
+      </div>
+
+      <!-- Flashing -->
+      <div v-else-if="phase === 'flashing'" class="status-block">
+        <OnyxLoadingIndicator type="circle" />
+        <span>Writing firmware… {{ flashPercent }}%</span>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar" :style="{ width: flashPercent + '%' }"></div>
+        </div>
       </div>
 
       <!-- Rebooting -->
-      <div v-if="phase === 'rebooting'" class="status-block">
+      <div v-else-if="phase === 'rebooting'" class="status-block">
         <OnyxLoadingIndicator type="circle" />
         <span>Flash complete! Waiting for device to reboot…</span>
       </div>
 
       <!-- Provisioning -->
-      <div v-if="phase === 'provisioning'" class="status-block">
+      <div v-else-if="phase === 'provisioning'" class="status-block">
         <OnyxLoadingIndicator type="circle" />
         <span>Provisioning device…</span>
         <pre class="log">{{ provLog }}</pre>
       </div>
 
       <!-- Done -->
-      <OnyxInfoCard v-if="phase === 'done'" color="success">
+      <OnyxInfoCard v-else-if="phase === 'done'" color="success">
         Device flashed and provisioned successfully!
       </OnyxInfoCard>
 
       <!-- Error -->
-      <div v-if="phase === 'error'">
+      <div v-else-if="phase === 'error'">
         <OnyxInfoCard color="danger">{{ errorMsg }}</OnyxInfoCard>
         <div class="error-actions">
           <OnyxButton label="Try Again" @click="reset" />
@@ -60,9 +66,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { OnyxButton, OnyxInfoCard, OnyxLoadingIndicator, OnyxInput } from 'sit-onyx'
-import 'esp-web-tools'
+import { flash as espFlashImpl } from 'esp-web-tools/dist/flash.js'
+import api from '../api'
 
 const props = defineProps<{
   manifestUrl: string
@@ -72,11 +79,11 @@ const props = defineProps<{
   joinEui: string
 }>()
 
-type Phase = 'idle' | 'flashing' | 'rebooting' | 'provisioning' | 'done' | 'error'
+type Phase = 'idle' | 'erasing' | 'flashing' | 'rebooting' | 'provisioning' | 'done' | 'error'
 
 const webSerialSupported = ref(false)
 const phase = ref<Phase>('idle')
-const flashState = ref('')
+const flashPercent = ref(0)
 const provLog = ref('')
 const errorMsg = ref('')
 
@@ -95,67 +102,88 @@ function onSleepChange(v?: string) {
   if (!Number.isNaN(n)) sleepSec.value = Math.max(1, Math.round(n))
 }
 
-const flashStateLabel = computed(() => {
-  const labels: Record<string, string> = {
-    INITIALIZING: 'Initializing…',
-    MANIFEST: 'Loading manifest…',
-    PREPARING: 'Preparing device…',
-    ERASING: 'Erasing flash…',
-    WRITING: 'Writing firmware…',
-    FINISHED: 'Done!',
-  }
-  return labels[flashState.value] || flashState.value
-})
-
-const espBtnRef = ref<Element | null>(null)
-let rebootTimer: ReturnType<typeof setTimeout> | null = null
-
-function onFlashStateChanged(e: Event) {
-  const state = (e as CustomEvent).detail?.state as string
-  if (state === 'FINISHED') {
-    phase.value = 'rebooting'
-    rebootTimer = setTimeout(() => startProvisioning(), 4000)
-  } else if (state === 'ERROR') {
-    errorMsg.value = 'Flash failed. Check USB connection and try again.'
-    phase.value = 'error'
-  } else {
-    phase.value = 'flashing'
-    flashState.value = state
-  }
-}
-
 onMounted(() => {
   webSerialSupported.value = 'serial' in navigator
-  espBtnRef.value?.addEventListener('state-changed', onFlashStateChanged)
 })
 
-onUnmounted(() => {
-  espBtnRef.value?.removeEventListener('state-changed', onFlashStateChanged)
-  if (rebootTimer) clearTimeout(rebootTimer)
-})
+async function startFlash() {
+  // Allow tests to inject a mock flash function via window.__espFlash
+  const espFlash: typeof espFlashImpl = (globalThis as any).__espFlash ?? espFlashImpl
+  // Allow tests to shorten the reboot wait via globalThis.__rebootWaitMs
+  const rebootWaitMs: number = (globalThis as any).__rebootWaitMs ?? 4000
 
-async function startProvisioning() {
-  phase.value = 'provisioning'
-  const nav = navigator as any
-  if (!('serial' in nav)) {
-    errorMsg.value = 'Web Serial not supported.'
+  // 1. Request serial port — if user cancels, stay on idle
+  let port: any
+  try {
+    port = await (navigator as any).serial.requestPort()
+  } catch {
+    return
+  }
+
+  // 2. Fetch manifest JSON
+  let manifest: any
+  try {
+    const res = await fetch(props.manifestUrl)
+    if (!res.ok) throw new Error(`Manifest fetch failed: ${res.status}`)
+    manifest = await res.json()
+  } catch (e: any) {
+    errorMsg.value = e?.message || 'Failed to fetch firmware manifest.'
     phase.value = 'error'
     return
   }
-  let port: any
+
+  // 3. Erase + flash (flash() disconnects port when done)
+  phase.value = 'erasing'
+  flashPercent.value = 0
+  let flashFailed = false
+
   try {
-    const remembered = await nav.serial.getPorts()
-    port = remembered.length > 0 ? remembered[0] : await nav.serial.requestPort()
-    await doProvision(port)
+    await espFlash(
+      (s: any) => {
+        if (s.state === 'erasing') {
+          phase.value = 'erasing'
+        } else if (s.state === 'writing') {
+          phase.value = 'flashing'
+          flashPercent.value = s.details?.percentage ?? 0
+        } else if (s.state === 'error') {
+          flashFailed = true
+          errorMsg.value = s.message || 'Flash failed. Check USB connection and try again.'
+          phase.value = 'error'
+        }
+      },
+      port,
+      props.manifestUrl,
+      manifest,
+      true, // eraseFirst
+    )
   } catch (e: any) {
-    errorMsg.value = e?.message || String(e)
+    errorMsg.value = e?.message || 'Flash failed unexpectedly.'
     phase.value = 'error'
+    return
   }
+
+  if (flashFailed) return
+
+  // 4. Wait for device to reboot (port was closed by flash())
+  phase.value = 'rebooting'
+  await new Promise(resolve => setTimeout(resolve, rebootWaitMs))
+
+  // 5. Reopen port and provision
+  await doProvision(port)
 }
 
 async function doProvision(port: any) {
+  phase.value = 'provisioning'
+
   try {
     await port.open({ baudRate: 115200 })
+  } catch (e: any) {
+    errorMsg.value = e?.message || 'Failed to reopen serial port for provisioning.'
+    phase.value = 'error'
+    return
+  }
+
+  try {
     const decoder = new TextDecoder()
     const encoder = new TextEncoder()
     const reader = port.readable.getReader()
@@ -180,6 +208,17 @@ async function doProvision(port: any) {
     provLog.value += 'Waiting for PROV_READY...\n'
     await readUntil('PROV_READY', 15000)
 
+    // Fetch WiFi credentials from server (optional — skip if not configured)
+    let wifiSsid = ''
+    let wifiPassword = ''
+    try {
+      const cfg = await api.get<{ wifi_ssid: string; wifi_password: string }>('/api/provision-config')
+      wifiSsid = cfg.data.wifi_ssid ?? ''
+      wifiPassword = cfg.data.wifi_password ?? ''
+    } catch {
+      // Non-fatal — proceed without WiFi credentials
+    }
+
     const lines = [
       `sensor_id=${props.sensorUuid}`,
       `factor=${factor.value}`,
@@ -187,6 +226,8 @@ async function doProvision(port: any) {
       `joineui=${props.joinEui}`,
       `deveui=${props.devEui}`,
       `appkey=${props.appKey}`,
+      ...(wifiSsid     ? [`wifi_ssid=${wifiSsid}`]         : []),
+      ...(wifiPassword ? [`wifi_password=${wifiPassword}`] : []),
     ]
 
     for (const ln of lines) {
@@ -203,7 +244,7 @@ async function doProvision(port: any) {
       const out = await readUntil('RESTART', 5000)
       provLog.value += out
     } catch {
-      // Device may restart immediately and close the port; treat as success
+      // Device may restart immediately — treat as success
     }
 
     phase.value = 'done'
@@ -218,39 +259,18 @@ async function doProvision(port: any) {
 
 function reset() {
   phase.value = 'idle'
-  flashState.value = ''
+  flashPercent.value = 0
   provLog.value = ''
   errorMsg.value = ''
-  if (rebootTimer) {
-    clearTimeout(rebootTimer)
-    rebootTimer = null
-  }
 }
 </script>
 
 <style scoped>
 .flash-provision-wrap { margin-top: 1rem; }
 
-.flash-btn-wrap {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin: 1rem 0;
+.action-row {
+  margin-top: 1.5rem;
 }
-
-.flash-button {
-  font-family: var(--onyx-font-family-paragraph);
-  font-size: var(--onyx-font-size-md);
-  font-weight: 600;
-  background: var(--onyx-color-base-primary-500);
-  color: var(--onyx-color-text-icons-neutral-inverted);
-  border: none;
-  padding: var(--onyx-density-sm) var(--onyx-density-lg);
-  border-radius: var(--onyx-radius-md);
-  cursor: pointer;
-}
-
-.flash-button:hover { background: var(--onyx-color-base-primary-600); }
 
 .advanced { margin-top: 1rem; }
 
@@ -267,6 +287,22 @@ function reset() {
   align-items: center;
   padding: 2rem;
   gap: 0.5rem;
+}
+
+.progress-bar-wrap {
+  width: 100%;
+  max-width: 320px;
+  height: 6px;
+  background: var(--onyx-color-base-neutral-200);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: var(--onyx-color-base-primary-500);
+  border-radius: 3px;
+  transition: width 0.3s ease;
 }
 
 .log {
@@ -286,6 +322,6 @@ function reset() {
 .hint {
   color: var(--onyx-color-text-icons-neutral-soft);
   font-size: var(--onyx-font-size-sm);
-  margin: 0;
+  margin: 0.25rem 0 0;
 }
 </style>

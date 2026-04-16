@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <OnyxPageLayout>
     <div v-if="loading" class="status">
       <OnyxLoadingIndicator type="circle" />
       <span>Loading sensors…</span>
@@ -10,8 +10,23 @@
     </div>
 
     <template v-else>
+      <div v-if="confirmAllVersions" class="confirm-banner">
+        <OnyxInfoCard color="warning">
+          Send a version-request downlink to ALL linked sensors? This uses LoRa duty cycle on every device.
+        </OnyxInfoCard>
+        <div class="confirm-banner-actions">
+          <OnyxButton label="Yes, send to all" color="danger" @click="confirmAndRequestAllVersions" />
+          <OnyxButton label="Cancel" color="neutral" mode="outline" @click="confirmAllVersions = false" />
+        </div>
+      </div>
       <div v-if="pageError" class="page-error">
         <OnyxInfoCard color="danger">{{ pageError }}</OnyxInfoCard>
+      </div>
+      <div v-if="pageSuccess" class="page-success">
+        <OnyxInfoCard color="success">{{ pageSuccess }}</OnyxInfoCard>
+      </div>
+      <div v-if="pageInfo" class="page-info">
+        <OnyxInfoCard color="info">{{ pageInfo }}</OnyxInfoCard>
       </div>
 
       <div v-if="sensors.length" class="table-wrapper">
@@ -20,19 +35,21 @@
             <OnyxHeadline is="h2">Registered Sensors</OnyxHeadline>
           </template>
           <template #actions>
+            <OnyxButton label="Request All Versions" color="neutral" mode="outline" @click="confirmAllVersions = true" />
             <OnyxButton label="Refresh" color="primary" @click="refresh" />
           </template>
           <template #head>
             <tr>
-              <th>Name</th>
-              <th>UUID</th>
-              <th>Coordinates</th>
-              <th>Type</th>
-              <th>TTN</th>
-              <th>Last Data</th>
-              <th>Battery</th>
-              <th>Added</th>
-              <th></th>
+              <th scope="col">Name</th>
+              <th scope="col">UUID</th>
+              <th scope="col">Map</th>
+              <th scope="col">Type</th>
+              <th scope="col">TTN</th>
+              <th scope="col">Last Data</th>
+              <th scope="col">Battery</th>
+              <th scope="col">Firmware</th>
+              <th scope="col">Added</th>
+              <th scope="col"></th>
             </tr>
           </template>
 
@@ -41,11 +58,12 @@
               <td class="bold">{{ s.name }}</td>
               <td class="mono">{{ s.uuid }}</td>
               <td>
-                <span
-                  class="coord-btn"
+                <button
+                  class="map-pin-btn"
                   @click="toggleMap(s.uuid)"
-                  :title="mapUUID === s.uuid ? 'Hide map' : 'Show on map'"
-                >{{ s.latitude.toFixed(6) }}, {{ s.longitude.toFixed(6) }}</span>
+                  :title="`${s.latitude.toFixed(6)}, ${s.longitude.toFixed(6)}`"
+                  :aria-label="mapUUID === s.uuid ? 'Hide map' : 'Show on map'"
+                >📍</button>
               </td>
               <td>{{ s.type }}</td>
               <td>
@@ -84,6 +102,21 @@
                 >{{ Math.round(s.last_battery_value!) }}%</OnyxBadge>
                 <span v-else class="battery-unknown">—</span>
               </td>
+              <td>
+                <div class="actions-cell">
+                  <OnyxBadge
+                    :class="['firmware-badge']"
+                    color="neutral"
+                    :title="s.firmware_version_time ? `Reported: ${formatDate(s.firmware_version_time)}` : undefined"
+                  >{{ s.firmware_version ?? 'Unknown' }}</OnyxBadge>
+                  <button
+                    class="version-refresh-btn"
+                    :title="'Request version update'"
+                    :disabled="versionRequestUUID === s.uuid"
+                    @click="requestVersion(s.uuid)"
+                  >↻</button>
+                </div>
+              </td>
               <td>{{ formatDate(s.created_at) }}</td>
               <td>
                 <div class="actions-cell">
@@ -95,6 +128,16 @@
                     :disabled="rebuildUUID === s.uuid"
                     :loading="rebuildUUID === s.uuid"
                     @click="startRebuild(s)"
+                  />
+                  <OnyxButton
+                    label="Trigger OTA"
+                    mode="outline"
+                    color="neutral"
+                    density="compact"
+                    :disabled="!s.ttn_device_id || otaUUID === s.uuid"
+                    :loading="otaUUID === s.uuid"
+                    title="Download and install next firmware version over WiFi"
+                    @click="triggerOTA(s.uuid)"
                   />
                   <span class="action-separator"></span>
                   <template v-if="deleteConfirmUUID === s.uuid">
@@ -113,12 +156,12 @@
               </td>
             </tr>
             <tr v-if="mapUUID === s.uuid" class="map-row">
-              <td colspan="9" class="map-cell">
+              <td colspan="10" class="map-cell">
                 <SensorMap :lat="s.latitude" :lng="s.longitude" :name="s.name" />
               </td>
             </tr>
             <tr v-if="ttnInfoUUID === s.uuid" class="ttn-info-row">
-              <td colspan="9">
+              <td colspan="10">
                 <div class="ttn-info-panel">
                   <div class="ttn-info-grid">
                     <div class="ttn-info-item">
@@ -138,7 +181,7 @@
               </td>
             </tr>
             <tr v-if="rebuildUUID === s.uuid" class="rebuild-row">
-              <td colspan="9">
+              <td colspan="10">
                 <div class="rebuild-panel">
                   <!-- Building -->
                   <div v-if="rebuildStatus === 'building'" class="rebuild-building">
@@ -189,7 +232,7 @@
         <OnyxButton label="Add your first sensor" color="primary" link="/add" />
       </div>
     </template>
-  </div>
+  </OnyxPageLayout>
 </template>
 
 <script setup lang="ts">
@@ -200,7 +243,7 @@ import {
   OnyxBadge,
   OnyxHeadline,
   OnyxLoadingIndicator,
-  OnyxInfoCard,
+  OnyxInfoCard, OnyxPageLayout,
 } from 'sit-onyx'
 import api from '../api'
 import axios from 'axios'
@@ -221,12 +264,15 @@ interface Sensor {
   last_battery_value: number | null
   last_battery_time: string | null
   last_data_time: string | null
+  firmware_version: string | null
+  firmware_version_time: string | null
 }
 
 const sensors = ref<Sensor[]>([])
 const loading = ref(false)
 const loadError = ref(false)
 const linkingUUID = ref('')
+const versionRequestUUID = ref('')
 
 // Inline delete confirmation
 const deleteConfirmUUID = ref('')
@@ -240,6 +286,18 @@ function showError(msg: string) {
   if (errorTimer) clearTimeout(errorTimer)
   errorTimer = setTimeout(() => { pageError.value = '' }, 6000)
 }
+
+// Page-level success toast — auto-clears after 4s
+const pageSuccess = ref('')
+let successTimer: ReturnType<typeof setTimeout> | null = null
+
+function showSuccess(msg: string) {
+  pageSuccess.value = msg
+  if (successTimer) clearTimeout(successTimer)
+  successTimer = setTimeout(() => { pageSuccess.value = '' }, 4000)
+}
+
+const confirmAllVersions = ref(false)
 
 const ttnInfoUUID = ref('')
 const mapUUID = ref('')
@@ -257,6 +315,18 @@ const rebuildStatus = ref<'building' | 'done' | 'error'>('building')
 const rebuildMessage = ref('')
 const showFlashAndProvision = ref(false)
 let rebuildPollTimer: ReturnType<typeof setInterval> | null = null
+
+// Page-level info card (e.g. already-on-latest OTA) — auto-clears after 6s
+const pageInfo = ref('')
+let infoTimer: ReturnType<typeof setTimeout> | null = null
+
+function showInfo(msg: string) {
+  pageInfo.value = msg
+  if (infoTimer) clearTimeout(infoTimer)
+  infoTimer = setTimeout(() => { pageInfo.value = '' }, 6000)
+}
+
+const otaUUID = ref('')
 
 async function refresh() {
   loading.value = true
@@ -298,6 +368,53 @@ async function confirmDelete(s: Sensor) {
     sensors.value = sensors.value.filter(x => x.uuid !== s.uuid)
   } catch (e: unknown) {
     showError(e instanceof Error ? e.message : 'Delete failed')
+  }
+}
+
+async function requestVersion(uuid: string) {
+  versionRequestUUID.value = uuid
+  try {
+    await api.post(`/api/sensors/${uuid}/request-version`)
+    showSuccess('Version request queued — sensor will report on next wake')
+  } catch (e: unknown) {
+    const msg = axios.isAxiosError(e) && e.response?.data?.error
+      ? e.response.data.error
+      : 'Version request failed'
+    showError(msg)
+  } finally {
+    versionRequestUUID.value = ''
+  }
+}
+
+async function confirmAndRequestAllVersions() {
+  confirmAllVersions.value = false
+  try {
+    await api.post('/api/sensors/request-all-versions')
+    showSuccess('Version request queued for all linked sensors')
+  } catch (e: unknown) {
+    const msg = axios.isAxiosError(e) && e.response?.data?.error
+      ? e.response.data.error
+      : 'Bulk version request failed'
+    showError(msg)
+  }
+}
+
+async function triggerOTA(uuid: string) {
+  otaUUID.value = uuid
+  try {
+    const { data } = await api.post(`/api/sensors/${uuid}/trigger-ota`)
+    showSuccess(data.message ?? 'OTA queued — sensor updates on next wake')
+  } catch (e: unknown) {
+    if (axios.isAxiosError(e) && e.response?.status === 409) {
+      showInfo(e.response.data?.error ?? 'Sensor is already on the latest version')
+    } else {
+      const msg = axios.isAxiosError(e) && e.response?.data?.error
+        ? e.response.data.error
+        : 'OTA trigger failed'
+      showError(msg)
+    }
+  } finally {
+    otaUUID.value = ''
   }
 }
 
@@ -400,6 +517,14 @@ onUnmounted(() => {
     clearTimeout(errorTimer)
     errorTimer = null
   }
+  if (successTimer) {
+    clearTimeout(successTimer)
+    successTimer = null
+  }
+  if (infoTimer) {
+    clearTimeout(infoTimer)
+    infoTimer = null
+  }
 })
 </script>
 
@@ -414,9 +539,37 @@ onUnmounted(() => {
   color: var(--onyx-color-text-icons-neutral-medium);
 }
 
+.confirm-banner {
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.confirm-banner-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
 .page-error {
   margin-bottom: 1rem;
 }
+
+.page-success {
+  margin-bottom: 1rem;
+}
+
+.version-refresh-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  color: var(--onyx-color-base-primary-500);
+  padding: 0 0.25rem;
+  line-height: 1;
+}
+.version-refresh-btn:hover { opacity: 0.7; }
+.version-refresh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .table-wrapper {
   overflow-x: auto;
@@ -453,15 +606,16 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-.coord-btn {
+.map-pin-btn {
+  background: none;
+  border: none;
   cursor: pointer;
-  color: var(--onyx-color-base-primary-500);
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  font-size: 0.875rem;
-  white-space: nowrap;
+  font-size: 1.1rem;
+  padding: 0.1rem 0.2rem;
+  line-height: 1;
+  border-radius: 4px;
 }
-.coord-btn:hover { opacity: 0.8; }
+.map-pin-btn:hover { background: var(--onyx-color-base-neutral-200); }
 
 .battery-unknown {
   color: var(--onyx-color-text-icons-neutral-soft);
