@@ -56,6 +56,24 @@ jobs:
             https://github.com/golang-migrate/migrate/releases/download/v4.18.1/migrate.linux-amd64.tar.gz \
             | tar -xz -C /usr/local/bin migrate
 
+      - name: Install postgres client
+        run: |
+          apt-get update
+          apt-get install -y postgresql-client
+
+      - name: Wait for TimescaleDB to be ready
+        run: |
+          for i in $(seq 1 60); do
+            if pg_isready -h timescaledb -p 5432 -U timescaledb -d postgres; then
+              echo "TimescaleDB ready after ${i}s"
+              exit 0
+            fi
+            echo "Waiting for TimescaleDB... (${i}s)"
+            sleep 2
+          done
+          echo "TimescaleDB did not become ready in time" >&2
+          exit 1
+
       - name: Run DB migrations
         run: |
           migrate \
