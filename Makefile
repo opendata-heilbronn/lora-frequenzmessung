@@ -1,4 +1,4 @@
-.PHONY: help backend management aggregator frontend infra migrate test build reset-password
+.PHONY: help backend management aggregator frontend infra migrate test build reset-password deploy
 
 ENV_FILE := $(CURDIR)/backend/.env
 LOAD_ENV := set -a && source $(ENV_FILE) && set +a
@@ -54,8 +54,35 @@ build: ## Build all Go binaries to /tmp
 
 # ── Dev shortcuts ─────────────────────────────────────────────────────────────
 
-reset-password: ## Reset a user's password (interactive, or: make reset-password ARGS="username [newpassword]")
+reset-password: ## Reset a user's password. Local: make reset-password [ARGS="username [pw]"]. Prod: make reset-password CONTAINER=<name> [ARGS="username [pw]"]
+ifdef CONTAINER
+	docker exec -it $(CONTAINER) /reset-password $(ARGS)
+else
 	cd backend && $(LOAD_ENV) && go run ./cmd/reset-password $(ARGS)
+endif
+
+deploy: ## Build all images for linux/amd64 and push :latest to Codeberg registry
+	$(eval GIT_SHA := $(shell git rev-parse HEAD))
+	@echo "Building and pushing all images (linux/amd64) @ $(GIT_SHA)"
+	@for svc in backend management aggregator; do \
+		echo "→ $$svc"; \
+		docker build --platform linux/amd64 \
+			--build-arg IMAGE_VERSION="latest-$(GIT_SHA)" \
+			--build-arg GIT_SHA="$(GIT_SHA)" \
+			--build-arg RUN_NUMBER="0" \
+			-t codeberg.org/cfhn/lora-frequenzmessung/$$svc:latest \
+			-f docker/go/$$svc/Dockerfile . && \
+		docker push codeberg.org/cfhn/lora-frequenzmessung/$$svc:latest || exit 1; \
+	done
+	@echo "→ frontend"
+	@docker build --platform linux/amd64 \
+		--build-arg IMAGE_VERSION="latest-$(GIT_SHA)" \
+		--build-arg GIT_SHA="$(GIT_SHA)" \
+		--build-arg RUN_NUMBER="0" \
+		-t codeberg.org/cfhn/lora-frequenzmessung/frontend:latest \
+		-f docker/frontend/Dockerfile . && \
+	docker push codeberg.org/cfhn/lora-frequenzmessung/frontend:latest
+	@echo "✓ All images pushed"
 
 dev: ## Start infra + all backend services + frontend in parallel
 	$(MAKE) infra

@@ -4,6 +4,7 @@ COPY backend .
 
 RUN go mod download
 RUN CGO_ENABLED=0 GOOS=linux go build -o /main ./ManagementAPI
+RUN CGO_ENABLED=0 GOOS=linux go build -o /reset-password ./cmd/reset-password
 
 FROM scratch
 
@@ -23,5 +24,6 @@ ENV RUN_NUMBER=$RUN_NUMBER
 
 EXPOSE 3002
 COPY --from=app-builder /main /main
+COPY --from=app-builder /reset-password /reset-password
 COPY --from=alpine:latest /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 CMD ["/main"]
