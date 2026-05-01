@@ -11,7 +11,6 @@ import {
   OnyxForm,
   OnyxInput, ColumnTypesFromFeatures,
 } from "sit-onyx";
-import {iconPlus} from "@sit-onyx/icons";
 import {h, ref, watch} from "vue";
 import UserActions from "../components/UserActions.vue";
 import api from "../api.ts";
@@ -81,21 +80,21 @@ watch([userModalOpen], ([isOpen]: [boolean]) => {
   }
 })
 
-const withCustomActions = createFeature(() => ({
-  name: Symbol("user actions"),
-  actions: () => [
-    {
-      label: "Create new User",
-      displayAs: "button",
-      icon: iconPlus,
-      color: "neutral",
-      density: "compact",
-      onClick: () => {
-        userModalMode.value = "create";
-        userModalOpen.value = true;
-      }
-    }
-  ],
+const withCreateButton = createFeature(() => ({
+  name: Symbol("create button"),
+  slots: {
+    actions: () => [
+      h(OnyxButton, {
+        label: "Create new User",
+        color: "neutral",
+        mode: "outline",
+        onClick: () => {
+          userModalMode.value = "create";
+          userModalOpen.value = true;
+        },
+      }),
+    ],
+  },
 }));
 
 const withActionColumn = createFeature(() => ({
@@ -167,13 +166,12 @@ const reload = async () => {
   nextPageToken = response.data.next_page_token ?? "";
 }
 
-const features = [withCustomActions, withActionColumn, withPaginationButton];
+const features = [withCreateButton, withActionColumn, withPaginationButton];
 </script>
 
 <template>
   <OnyxPageLayout>
-    <OnyxDataGrid headline="Users" :data :columns
-                  :features></OnyxDataGrid>
+    <OnyxDataGrid headline="Users" :data :columns :features></OnyxDataGrid>
     <OnyxModal :open="userToConfirmDelete !== undefined" label="Confirm Delete" :alert="true"
                @update:open="userToConfirmDelete = undefined">
       <div class="modal">

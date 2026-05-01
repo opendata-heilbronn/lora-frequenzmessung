@@ -80,3 +80,8 @@ Template: `.env.local.dist`. Key vars:
 TimescaleDB (PostgreSQL 17). Migrations in `db/migrations/`:
 - `000001`: `sensor_data` hypertable (time-series sensor readings)
 - `000002`: `sensors` table (device registry with TTN credentials)
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+<!-- SPECKIT END -->
