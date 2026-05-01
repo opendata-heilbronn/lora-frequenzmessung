@@ -6,8 +6,11 @@ services:
     environment:
       POSTGRES_USER: timescaledb
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      MANAGEMENT_DB_USER: ${MANAGEMENT_DB_USER}
+      MANAGEMENT_DB_PASSWORD: ${MANAGEMENT_DB_PASSWORD}
     volumes:
       - db-storage:/var/lib/postgresql/data
+      - ./docker/timescaledb-init:/docker-entrypoint-initdb.d:ro
     networks: [app-net,stats_default]
     restart: unless-stopped
 
@@ -25,16 +28,15 @@ services:
   management:
     image: codeberg.org/cfhn/lora-frequenzmessung/management:${IMAGE_TAG}
     environment:
+      DATABASE_URI: postgres://${MANAGEMENT_DB_USER}:${MANAGEMENT_DB_PASSWORD}@db:5432/management?sslmode=disable
       BACKEND_INTERNAL_URL: http://backend:3001
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       JWT_SECRET: ${JWT_SECRET}
-      ADMIN_USERNAME: ${ADMIN_USERNAME}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       TTN_APP_ID: ${TTN_APP_ID}
       TTN_API_KEY: ${TTN_API_KEY}
       CORS_ORIGINS: ${CORS_ORIGINS}
       FIRMWARE_CHANNEL: ${FIRMWARE_CHANNEL}
-    depends_on: [backend]
+    depends_on: [db, backend]
     networks: [app-net]
     restart: unless-stopped
     labels:
