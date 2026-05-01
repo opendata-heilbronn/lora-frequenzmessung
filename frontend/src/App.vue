@@ -5,6 +5,7 @@
         <OnyxNavItem label="Sensors" link="/" />
         <OnyxNavItem label="+ Add Sensor" link="/add" />
         <OnyxNavItem label="User" link="/users" />
+        <OnyxNavItem label="Debug" link="/debug" />
         <template #mobileActivePage>
           <OnyxNavItem label="Sensors" link="/" />
         </template>
