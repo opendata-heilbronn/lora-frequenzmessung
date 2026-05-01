@@ -15,10 +15,11 @@ jobs:
           POSTGRES_PASSWORD: password
           POSTGRES_DB: postgres
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U timescaledb -d postgres"
           --health-interval 5s
           --health-timeout 5s
-          --health-retries 10
+          --health-retries 30
+          --health-start-period 30s
 
     env:
       DB_DSN: postgres://timescaledb:password@timescaledb:5432/postgres?sslmode=disable
