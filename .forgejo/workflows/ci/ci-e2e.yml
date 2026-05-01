@@ -118,12 +118,14 @@ jobs:
         working-directory: frontend
         run: npx playwright install chromium --with-deps
 
-      # Run unit tests (mocked API, dev server auto-started by playwright config)
+      - name: Build frontend (for vite preview)
+        working-directory: frontend
+        run: npx vite build
+
+      # Run unit tests (mocked API, vite preview started by playwright config)
       - name: Run Playwright unit tests
         working-directory: frontend
-        run: npx playwright test --project=unit --workers=1
-        env:
-          NODE_OPTIONS: "--max-old-space-size=512"
+        run: npx playwright test --project=unit
 
       # Run live integration tests only when TTN secrets are configured in repo.
       # Go to Codeberg repo → Settings → Actions → Secrets and add TTN_APP_ID + TTN_API_KEY
