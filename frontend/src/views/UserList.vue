@@ -83,16 +83,19 @@ watch([userModalOpen], ([isOpen]: [boolean]) => {
 const withCreateButton = createFeature(() => ({
   name: Symbol("create button"),
   slots: {
-    actions: () => [
-      h(OnyxButton, {
-        label: "Create new User",
-        color: "neutral",
-        mode: "outline",
-        onClick: () => {
-          userModalMode.value = "create";
-          userModalOpen.value = true;
-        },
-      }),
+    headline: (slotContent) => [
+      h("div", { class: "users-headline" }, [
+        ...slotContent(),
+        h(OnyxButton, {
+          label: "Create new User",
+          color: "neutral",
+          mode: "outline",
+          onClick: () => {
+            userModalMode.value = "create";
+            userModalOpen.value = true;
+          },
+        }),
+      ]),
     ],
   },
 }));
@@ -213,6 +216,13 @@ const features = [withCreateButton, withActionColumn, withPaginationButton];
 <style scoped>
 :deep(.onyx-table-wrapper td:not(:last-child)) {
   line-height: 2rem;
+}
+
+:deep(.users-headline) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
 }
 
 .modal {
