@@ -3,5 +3,7 @@ if [ -z "${POSTGRESQL_PASSWORD:-}" ]; then
 fi
 export PGPASSWORD="$POSTGRESQL_PASSWORD"
 
-echo "select 'create user management with password ''management''' where not exists (SELECT FROM pg_user WHERE usename = 'management')\gexec" | psql -U "${POSTGRES_USER}" postgres
-echo "select 'create database management with owner management' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'management')\gexec" | psql -U "${POSTGRES_USER}" postgres
+MGMT_USER="${MANAGEMENT_DB_USER:-management}"
+MGMT_PASS="${MANAGEMENT_DB_PASSWORD:-management}"
+echo "select 'create user ${MGMT_USER} with password ''${MGMT_PASS}''' where not exists (SELECT FROM pg_user WHERE usename = '${MGMT_USER}')\gexec" | psql -U "${POSTGRES_USER}" postgres
+echo "select 'create database management with owner ${MGMT_USER}' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'management')\gexec" | psql -U "${POSTGRES_USER}" postgres
