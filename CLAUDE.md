@@ -82,6 +82,6 @@ TimescaleDB (PostgreSQL 17). Migrations in `db/migrations/`:
 - `000002`: `sensors` table (device registry with TTN credentials)
 
 <!-- SPECKIT START -->
-For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan
+Current active plan: specs/001-serial-debugger/plan.md
+For additional context: specs/001-serial-debugger/research.md, data-model.md, contracts/ui-components.md
 <!-- SPECKIT END -->
