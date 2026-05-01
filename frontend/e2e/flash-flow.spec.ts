@@ -12,7 +12,7 @@ test.describe('Add Sensor → Build → Flash & Provision flow (mocked)', () => 
     // Ensure auth guard passes; also suppress Web Serial API so the
     // ProvisionStep reliably shows the "not supported" warning in headless Chromium.
     await page.addInitScript(() => {
-      localStorage.setItem('token', 'test-token')
+      localStorage.setItem('token', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0LXVzZXIiLCJ1c2VybmFtZSI6ImFkbWluIiwiZXhwIjo5OTk5OTk5OTk5fQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c')
       try {
         Object.defineProperty(Navigator.prototype, 'serial', { get: () => undefined, configurable: true })
       } catch {
