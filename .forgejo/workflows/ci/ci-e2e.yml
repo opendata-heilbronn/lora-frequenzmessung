@@ -121,7 +121,9 @@ jobs:
       # Run unit tests (mocked API, dev server auto-started by playwright config)
       - name: Run Playwright unit tests
         working-directory: frontend
-        run: npx playwright test --project=unit
+        run: npx playwright test --project=unit --workers=1
+        env:
+          NODE_OPTIONS: "--max-old-space-size=512"
 
       # Run live integration tests only when TTN secrets are configured in repo.
       # Go to Codeberg repo → Settings → Actions → Secrets and add TTN_APP_ID + TTN_API_KEY
