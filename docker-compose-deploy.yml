@@ -13,7 +13,23 @@ services:
       - ./docker/timescaledb-init:/docker-entrypoint-initdb.d:ro
     networks: [app-net,stats_default]
     restart: unless-stopped
-
+  db-backup:
+    image: prodrigestivill/postgres-backup-local
+    restart: unless-stopped
+    networks: [app-net]
+    depends_on: [db]
+    volumes:
+      - ./backup:/backups
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_USER: timescaledb
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+      SCHEDULE: "@daily"
+      BACKUP_KEEP_DAYS: 30
+      BACKUP_KEEP_WEEKS: 4
+      BACKUP_KEEP_MONTHS: 0
+      POSTGRES_EXTRA_OPTS: "--format=custom --compress=9"
   backend:
     image: codeberg.org/cfhn/lora-frequenzmessung/backend:${IMAGE_TAG}
     environment:
