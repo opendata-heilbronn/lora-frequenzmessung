@@ -44,6 +44,9 @@ jobs:
       - name: Type-check
         run: npx vue-tsc --noEmit
 
+      - name: Build frontend (for vite preview)
+        run: npx vite build
+
       - name: Run Playwright unit tests (mocked API)
         run: npx playwright test --project=unit
 
