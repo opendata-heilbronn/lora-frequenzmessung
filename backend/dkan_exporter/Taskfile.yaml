@@ -1,0 +1,53 @@
+version: "3"
+
+tasks:
+  setup:
+    desc: Installs all necessary go tools
+    cmds:
+      - go get -tool github.com/ogen-go/ogen/cmd/ogen@latest
+
+  # -- GO TASKS --------------------------------------------
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - go test -v -race ./...
+
+  fmt:
+    desc: Format all files
+    cmds:
+      - go fmt ./...
+      - go vet ./...
+
+  build:
+    desc: Build the binary
+    cmds:
+      - go build -o bin/app main.go
+
+  check:
+    desc: Run all quality checks sequentially
+    cmds:
+      - task: fmt
+      - task: lint
+      - task: test
+
+  # --- OPENAPI --------------------------------------------
+  gateways:
+    desc: Generate all the code for gateways to other services
+    cmds:
+      - task: gateways:backend
+
+  gateways:backend:
+    desc: Generates the code for the backend connection to pull the data
+    vars:
+      SPEC: ../backend/openapi.yaml
+      TARGET: internal/gateways/backend/gen
+    deps: [setup]
+    cmds:
+      - echo "Generating code from {{.SPEC}} into {{.TARGET}}..."
+      - go tool ogen --target {{.TARGET}} --clean {{.SPEC}}
+      - go mod tidy

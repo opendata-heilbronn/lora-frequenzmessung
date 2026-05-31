@@ -11,10 +11,10 @@ import (
 	"syscall"
 	"time"
 
+	"codeberg.org/cfhn/lorax.git/backend/pkg/misc"
+	"codeberg.org/cfhn/lorax.git/backend/pkg/structs"
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/opendata-heilbronn/lora-frequenzmessung/Share/Misc"
-	structs2 "github.com/opendata-heilbronn/lora-frequenzmessung/structs"
 )
 
 // uuidRegex validates sensor UUIDs (8-char lowercase hex).
@@ -25,16 +25,18 @@ func validateUUID(c fiber.Ctx) (string, error) {
 	if !uuidRegex.MatchString(uuid) {
 		return "", c.Status(400).JSON(fiber.Map{"error": "invalid sensor UUID"})
 	}
+
 	return uuid, nil
 }
 
 func main() {
-	Misc.StartUp()
+	misc.StartUp()
 	log.Println("STARTING Backend")
 
 	app := fiber.New()
 	ctx := context.Background()
-	DBDns := Misc.GetDBDsn()
+	DBDns := misc.GetDBDsn()
+
 	pool, err := pgxpool.New(ctx, DBDns)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, " database: %v\n", DBDns)
@@ -47,21 +49,25 @@ func main() {
 	runMigrations(DBDns)
 
 	// X-Internal-Key authentication — this service is internal-only
-	internalKey := Misc.GetInternalAPIKey()
+	internalKey := misc.GetInternalAPIKey()
+
 	app.Use(func(c fiber.Ctx) error {
 		if c.Get("X-Internal-Key") != internalKey {
 			return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
 		}
+
 		return c.Next()
 	})
 
 	// Data ingestion
 	app.Post("/internal/sensor-data", func(c fiber.Ctx) error {
-		p := new(structs2.DensityDataWithClient)
+		p := new(structs.DensityDataWithClient)
+
 		err := c.AutoFormat(p)
 		if err != nil {
 			return err
 		}
+
 		err = json.Unmarshal(c.Body(), p)
 		if err != nil {
 			return err
@@ -75,7 +81,8 @@ func main() {
 			p.Client.Longitude,
 			p.Client.Latitude,
 			p.Data.Value,
-			p.DataType); err != nil {
+			p.DataType,
+		); err != nil {
 			log.Printf("ERROR: sendData failed: %v", err)
 			return c.Status(500).JSON(fiber.Map{"error": "failed to insert sensor data"})
 		}
@@ -102,9 +109,11 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Println("Shutting down server...")
+
 	if err := app.ShutdownWithTimeout(10 * time.Second); err != nil {
 		log.Printf("Server forced shutdown: %v", err)
 	}
+
 	log.Println("Server stopped")
 }
 
@@ -124,5 +133,6 @@ func sendData(pool *pgxpool.Pool, ctx context.Context, uuid string, sensorName s
 	if err != nil {
 		return fmt.Errorf("unable to insert data into database: %w", err)
 	}
+
 	return nil
 }
