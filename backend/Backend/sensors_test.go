@@ -33,6 +33,7 @@ func TestCreateSensor_EmptyName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
+
 	if resp.StatusCode != 400 {
 		t.Errorf("expected 400, got %d", resp.StatusCode)
 	}
@@ -49,6 +50,7 @@ func TestCreateSensor_NameTooLong(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
+
 	if resp.StatusCode != 400 {
 		t.Errorf("expected 400, got %d", resp.StatusCode)
 	}
@@ -64,6 +66,7 @@ func TestCreateSensor_LatitudeTooHigh(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
+
 	if resp.StatusCode != 400 {
 		t.Errorf("expected 400, got %d", resp.StatusCode)
 	}
@@ -79,6 +82,7 @@ func TestCreateSensor_LongitudeTooLow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
+
 	if resp.StatusCode != 400 {
 		t.Errorf("expected 400, got %d", resp.StatusCode)
 	}
@@ -94,6 +98,7 @@ func TestCreateSensor_InvalidJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
+
 	if resp.StatusCode != 400 {
 		t.Errorf("expected 400, got %d", resp.StatusCode)
 	}

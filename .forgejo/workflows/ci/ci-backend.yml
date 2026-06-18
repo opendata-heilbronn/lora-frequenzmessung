@@ -4,9 +4,9 @@ on:
   pull_request:
     paths:
       - backend/Backend/**
-      - backend/structs/**
+      - backend/pkg/structs/**
       - backend/internal/**
-      - backend/Share/**
+      - backend/pkg/**
       - backend/go.mod
       - backend/go.sum
       - .forgejo/workflows/ci/ci-backend.yml
@@ -31,7 +31,7 @@ jobs:
         run: go build -o /dev/null ./Backend/...
 
       - name: Run Backend tests with coverage
-        run: go test -coverprofile=coverage.out -covermode=atomic -v ./Backend/... ./Share/...
+        run: go test -coverprofile=coverage.out -covermode=atomic -v ./Backend/... ./pkg/...
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v3
@@ -108,9 +108,9 @@ jobs:
             -Dsonar.projectKey=lorax-backend \
             -Dsonar.projectName="Lorax – Backend" \
             -Dsonar.projectBaseDir=${{ github.workspace }}/backend \
-            -Dsonar.sources=Backend,Share,structs \
+            -Dsonar.sources=Backend,pkg \
             -Dsonar.exclusions=vendor/** \
-            -Dsonar.tests=Backend,Share \
+            -Dsonar.tests=Backend \
             -Dsonar.test.inclusions=**/*_test.go \
             -Dsonar.go.coverage.reportPaths=coverage.out \
             -Dsonar.sarifReportPaths=${{ github.workspace }}/trivy-report.sarif

@@ -3,10 +3,9 @@ name: CI – ManagementAPI (Go)
 on:
   pull_request:
     paths:
-      - backend/ManagementAPI/**
-      - backend/structs/**
+      - backend/management_api/**
+      - backend/pkg/structs/**
       - backend/internal/**
-      - backend/Share/**
       - backend/go.mod
       - backend/go.sum
       - .forgejo/workflows/ci/ci-management.yml
@@ -28,10 +27,10 @@ jobs:
           cache-dependency-path: backend/go.sum
 
       - name: Build ManagementAPI
-        run: go build -o /dev/null ./ManagementAPI/...
+        run: go build -o /dev/null ./management_api/...
 
       - name: Run ManagementAPI tests with coverage
-        run: go test -coverprofile=coverage.out -covermode=atomic -v ./ManagementAPI/... ./Share/...
+        run: go test -coverprofile=coverage.out -covermode=atomic -v ./management_api/...
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v3
@@ -108,9 +107,9 @@ jobs:
             -Dsonar.projectKey=lorax-management \
             -Dsonar.projectName="Lorax – ManagementAPI" \
             -Dsonar.projectBaseDir=${{ github.workspace }}/backend \
-            -Dsonar.sources=ManagementAPI,Share,structs \
+            -Dsonar.sources=management_api,pkg \
             -Dsonar.exclusions=vendor/** \
-            -Dsonar.tests=ManagementAPI,Share \
+            -Dsonar.tests=management_api \
             -Dsonar.test.inclusions=**/*_test.go \
             -Dsonar.go.coverage.reportPaths=coverage.out \
             -Dsonar.sarifReportPaths=${{ github.workspace }}/trivy-report.sarif

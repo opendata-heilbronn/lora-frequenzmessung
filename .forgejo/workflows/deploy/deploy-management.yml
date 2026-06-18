@@ -4,8 +4,7 @@ on:
   push:
     branches: [main, develop]
     paths:
-      - backend/ManagementAPI/**
-      - backend/Share/**
+      - backend/management_api/**
       - backend/structs/**
       - backend/internal/**
       - backend/go.mod

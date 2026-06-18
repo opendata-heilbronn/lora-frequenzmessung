@@ -23,7 +23,7 @@ backend: ## Run the internal Backend API (port 3001)
 	cd backend && $(LOAD_ENV) && go run ./Backend
 
 management: ## Run the ManagementAPI with JWT auth (port 3002)
-	cd backend && $(LOAD_ENV) && go run ./ManagementAPI
+	cd backend && $(LOAD_ENV) && go run ./management_api
 
 aggregator: ## Run the MQTT Aggregator
 	cd backend && $(LOAD_ENV) && go run ./Aggregator
@@ -48,7 +48,7 @@ test-frontend-live: ## Run Playwright integration tests (needs running backend)
 
 build: ## Build all Go binaries to /tmp
 	cd backend && go build -o /tmp/backend-bin ./Backend
-	cd backend && go build -o /tmp/management-bin ./ManagementAPI
+	cd backend && go build -o /tmp/management-bin ./management_api
 	cd backend && go build -o /tmp/aggregator-bin ./Aggregator
 	cd frontend && npm run build
 

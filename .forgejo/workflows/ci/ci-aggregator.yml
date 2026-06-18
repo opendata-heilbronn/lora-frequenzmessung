@@ -4,9 +4,9 @@ on:
   pull_request:
     paths:
       - backend/Aggregator/**
-      - backend/structs/**
+      - backend/pkg/structs/**
       - backend/internal/**
-      - backend/Share/**
+      - backend/pkg/**
       - backend/go.mod
       - backend/go.sum
       - .forgejo/workflows/ci/ci-aggregator.yml
@@ -92,6 +92,6 @@ jobs:
             -Dsonar.projectKey=lorax-aggregator \
             -Dsonar.projectName="Lorax – Aggregator" \
             -Dsonar.projectBaseDir=${{ github.workspace }}/backend \
-            -Dsonar.sources=Aggregator,structs \
+            -Dsonar.sources=Aggregator,pkg \
             -Dsonar.exclusions=vendor/** \
             -Dsonar.sarifReportPaths=${{ github.workspace }}/trivy-report.sarif

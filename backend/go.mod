@@ -1,4 +1,4 @@
-module github.com/opendata-heilbronn/lora-frequenzmessung
+module codeberg.org/cfhn/lorax.git/backend
 
 go 1.26.1
 
@@ -7,6 +7,7 @@ require (
 	github.com/caarlos0/env/v11 v11.3.1
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/go-resty/resty/v2 v2.16.5
+	github.com/gocarina/gocsv v0.0.0-20240520201108-78e41c74b4b1
 	github.com/gofiber/fiber/v3 v3.1.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/golang-migrate/migrate/v4 v4.19.1
