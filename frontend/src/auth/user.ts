@@ -57,7 +57,7 @@ export function loadAndRefreshToken() {
         refresh();
         return;
     }
-    const refreshIn = (claims.exp * 1000 - Date.now()) / 2;
+    const refreshIn = Math.min((claims.exp * 1000 - Date.now()) / 2, 23 * 60 * 60 * 1000);
     setTimeout(refresh, refreshIn);
 }
 
@@ -76,7 +76,7 @@ async function refresh() {
             return;
         }
 
-        const refreshIn = (claims.exp * 1000 - Date.now()) / 2;
+        const refreshIn = Math.min((claims.exp * 1000 - Date.now()) / 2, 23 * 60 * 60 * 1000);
         setTimeout(refresh, refreshIn);
     } catch (e) {
         return;

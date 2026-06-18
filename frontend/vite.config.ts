@@ -15,14 +15,14 @@ export default defineConfig({
   ],
   server: {
     proxy: {
-      '/api': {
-        target: 'http://localhost:3002',
-        changeOrigin: true,
-      },
-      '/auth': {
-        target: 'http://localhost:3002',
-        changeOrigin: true,
-      },
+      '/api': { target: 'http://localhost:3002', changeOrigin: true },
+      '/auth': { target: 'http://localhost:3002', changeOrigin: true },
+    },
+  },
+  preview: {
+    proxy: {
+      '/api': { target: 'http://localhost:3002', changeOrigin: true },
+      '/auth': { target: 'http://localhost:3002', changeOrigin: true },
     },
   },
   test: {
